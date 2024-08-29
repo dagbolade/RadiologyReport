@@ -72,7 +72,7 @@ def load_model_and_tokenizer():
     tokenizer_path = 'Radiography/tokenizer/tokenizer.pickle'
 
     try:
-        model = tf.saved_model.load(model_path)
+        model = tf.keras.models.load_model(model_path, compile=True)
         st.success("Model loaded successfully!")
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
