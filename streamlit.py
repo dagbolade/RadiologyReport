@@ -18,7 +18,7 @@ from matplotlib.colors import LinearSegmentedColormap
 import streamlit as st
 import tensorflow as tf
 import numpy as np
-import cv2
+#import cv2
 from PIL import Image
 import joblib
 import os
