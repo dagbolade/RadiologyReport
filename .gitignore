@@ -3,3 +3,8 @@ Radiography*.jpg
 *.xml
 *.h5
 *.keras
+
+
+# But don't ignore these specific .h5 files
+!Radiography/Attention_with_cheXNet_full_model1.h5
+!Radiography/Copy of Copy of brucechou1983_CheXNet_Keras_0.3.0_weights.h5
