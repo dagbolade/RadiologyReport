@@ -1,10 +1,9 @@
 # Automated Radiology Report Generation using Deep Learning for Chest X-ray scans
 
-(Demo.gif)
+(Demo.gif)![demo](https://github.com/user-attachments/assets/fd26a019-16c2-49ed-a447-6bb8b7c4754d)
 
 
 
-![Demo Video] https://github.com/user-attachments/assets/bb1883e8-58f6-460f-ba40-815f36a64842
 
 
 
