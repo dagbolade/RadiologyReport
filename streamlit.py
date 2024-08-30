@@ -69,7 +69,7 @@ def create_tabs():
 def load_model_and_tokenizer():
     st.write("Loading model and tokenizer...")
     # Update the model path to use the new .keras or .h5 file
-    model_path = 'Radiography/Attention_with_cheXNet_full_model.keras'  # or use .h5 if you prefer
+    model_path = 'Radiography/Attention_with_cheXNet_full_model'  # or use .h5 if you prefer
     tokenizer_path = 'Radiography/tokenizer/tokenizer.pickle'
 
     try:
@@ -77,9 +77,7 @@ def load_model_and_tokenizer():
         st.success("Model loaded successfully!!!, proeed to the next step")
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
-        st.error(f"Model path: {model_path}")
-        st.error(f"TensorFlow version: {tf.__version__}")
-        st.error(f"Keras version: {tf.keras.__version__}")
+
         return None, None
 
     try:
