@@ -10,10 +10,10 @@ warnings.filterwarnings('ignore', category=Warning)
 # Suppress TensorFlow logging
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-# Your TensorFlow import and code here
-import tensorflow as tf
-
-from matplotlib.colors import LinearSegmentedColormap
+from tensorflow.keras.layers import Dense, GRU, Embedding, Input, Concatenate, BatchNormalization, Dropout, AveragePooling2D, GlobalAveragePooling2D
+from tensorflow.keras.models import Model
+import streamlit as st
+import joblib
 
 import streamlit as st
 import tensorflow as tf
@@ -64,31 +64,224 @@ def create_tabs():
     return st.tabs(["Upload X-rays", "About", "How it works", "Report History"])
 
 
+chexnet_weights = "Radiography/Copy of Copy of brucechou1983_CheXNet_Keras_0.3.0_weights.h5"
+
+
 # Model and Tokenizer Loading
+
+def create_chexnet(chexnet_weights=chexnet_weights, input_size=(224, 224)):
+    """
+  chexnet_weights: weights value in .h5 format of chexnet
+  creates a chexnet model with preloaded weights present in chexnet_weights file
+  """
+    model = tf.keras.applications.DenseNet121(include_top=False, input_shape=input_size + (
+        3,))
+
+    x = model.output
+    x = GlobalAveragePooling2D()(x)
+    x = Dense(14, activation="sigmoid", name="chexnet_output")(x)  #here activation is sigmoid as seen in research paper
+
+    chexnet = tf.keras.Model(inputs=model.input, outputs=x)
+    chexnet.load_weights(chexnet_weights)
+    chexnet = tf.keras.Model(inputs=model.input, outputs=chexnet.layers[
+        -3].output)  #we will be taking the 3rd last layer (here it is layer before global avgpooling)
+    #since we are using attention here
+    return chexnet
+
+
+class Image_encoder(tf.keras.layers.Layer):
+    def __init__(self, name="image_encoder_block"):
+        super().__init__(name=name)
+        self.chexnet = create_chexnet()  # Ensure this function is defined
+        self.chexnet.trainable = False
+        self.avgpool = AveragePooling2D()
+
+    def call(self, data):
+        op = self.chexnet(data)
+        op = self.avgpool(op)
+        shape = tf.shape(op)
+        op = tf.reshape(op, shape=(-1, shape[1] * shape[2], shape[3]))
+        return op
+
+    def get_config(self):
+        config = super().get_config()
+        return config
+
+
+class global_attention(tf.keras.layers.Layer):
+    def __init__(self, dense_dim):
+        super().__init__()
+        self.W1 = Dense(units=dense_dim)
+        self.W2 = Dense(units=dense_dim)
+        self.V = Dense(units=1)
+
+    def call(self, encoder_output, decoder_h):
+        decoder_h = tf.expand_dims(decoder_h, axis=1)
+        tanh_input = self.W1(encoder_output) + self.W2(decoder_h)
+        tanh_output = tf.nn.tanh(tanh_input)
+        attention_weights = tf.nn.softmax(self.V(tanh_output), axis=1)
+        op = attention_weights * encoder_output
+        context_vector = tf.reduce_sum(op, axis=1)
+        return context_vector, attention_weights
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({"dense_dim": self.W1.units})
+        return config
+
+
+class One_Step_Decoder(tf.keras.layers.Layer):
+    def __init__(self, vocab_size, embedding_dim, max_pad, dense_dim):
+        super().__init__()
+        self.vocab_size = vocab_size
+        self.embedding_dim = embedding_dim
+        self.max_pad = max_pad
+        self.dense_dim = dense_dim
+        self.embedding = Embedding(input_dim=vocab_size + 1,
+                                   output_dim=embedding_dim,
+                                   input_length=max_pad,
+                                   mask_zero=True,
+                                   name='onestepdecoder_embedding')
+        self.LSTM = GRU(units=self.dense_dim,
+                        return_state=True,
+                        name='onestepdecoder_LSTM')
+        self.attention = global_attention(dense_dim=dense_dim)
+        self.concat = Concatenate(axis=-1)
+        self.dense = Dense(dense_dim, activation='relu', name='onestepdecoder_embedding_dense')
+        self.final = Dense(vocab_size + 1, activation='softmax')
+
+    def call(self, input_to_decoder, encoder_output, decoder_h):
+        embedding_op = self.embedding(input_to_decoder)
+        context_vector, attention_weights = self.attention(encoder_output, decoder_h)
+        context_vector_time_axis = tf.expand_dims(context_vector, axis=1)
+        concat_input = self.concat([context_vector_time_axis, embedding_op])
+        output, decoder_h = self.LSTM(concat_input, initial_state=decoder_h)
+        output = self.final(output)
+        return output, decoder_h, attention_weights
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "vocab_size": self.vocab_size,
+            "embedding_dim": self.embedding_dim,
+            "max_pad": self.max_pad,
+            "dense_dim": self.dense_dim
+        })
+        return config
+
+
+class decoder(tf.keras.Model):
+    """
+    Decodes the encoder output and caption
+    """
+
+    def __init__(self, max_pad, embedding_dim, dense_dim, score_fun='general', batch_size=32, vocab_size=10000):
+        super().__init__()
+        self.max_pad = max_pad
+        self.embedding_dim = embedding_dim
+        self.dense_dim = dense_dim
+        self.batch_size = batch_size
+        self.vocab_size = vocab_size
+        self.onestepdecoder = One_Step_Decoder(vocab_size=vocab_size, embedding_dim=embedding_dim, max_pad=max_pad,
+                                               dense_dim=dense_dim)
+        self.output_array = tf.TensorArray(tf.float32, size=max_pad)
+
+    @tf.function
+    def call(self, encoder_output, caption):
+        decoder_h, decoder_c = tf.zeros_like(encoder_output[:, 0]), tf.zeros_like(encoder_output[:, 0])
+        output_array = tf.TensorArray(tf.float32, size=self.max_pad)
+        for timestep in range(self.max_pad):
+            output, decoder_h, attention_weights = self.onestepdecoder(caption[:, timestep:timestep + 1],
+                                                                       encoder_output, decoder_h)
+            output_array = output_array.write(timestep, output)
+
+        self.output_array = tf.transpose(output_array.stack(), [1, 0, 2])
+        return self.output_array
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "max_pad": self.max_pad,
+            "embedding_dim": self.embedding_dim,
+            "dense_dim": self.dense_dim,
+            "batch_size": self.batch_size,
+            "vocab_size": self.vocab_size
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
+
+# Model loading function
+# Model loading function
 @st.cache_resource
 def load_model_and_tokenizer():
     st.write("Loading model and tokenizer...")
 
-    model_path = 'Radiography/Attention_with_cheXNet_full_model1'
+    model_path = 'Radiography/Attention_with_cheXNet_full_model1.h5'
     tokenizer_path = 'Radiography/tokenizer/tokenizer.pickle'
 
-    try:
-        model = tf.keras.models.load_model(model_path, compile=False)
-        st.success("Model loaded successfully!!!, proeed to the next step")
-    except Exception as e:
-        st.error(f"Error loading model: {str(e)}")
-
-        return None, None
-
+    # First, load the tokenizer
     try:
         tokenizer = joblib.load(tokenizer_path)
         st.success("Tokenizer loaded successfully!")
+        tokenizer_vocab_size = len(tokenizer.word_index) + 1  # Add 1 for the padding token
+        st.write(f"Tokenizer vocabulary size: {tokenizer_vocab_size}")
     except Exception as e:
         st.error(f"Error loading tokenizer: {str(e)}")
-        return model, None
+        return None, None
+
+    # Define the parameters for the decoder
+    max_pad = 28
+    embedding_dim = 300
+    dense_dim = 512
+    batch_size = 32
+    model_vocab_size = 1413  # Set this to match the model's expected vocabulary size
+
+    # Update tokenizer if necessary
+    if model_vocab_size > tokenizer_vocab_size:
+        st.warning(f"Updating tokenizer to match model vocabulary size ({model_vocab_size})")
+        for i in range(tokenizer_vocab_size, model_vocab_size):
+            tokenizer.word_index[f'<extra_token_{i}>'] = i
+        tokenizer.index_word = {v: k for k, v in tokenizer.word_index.items()}
+        tokenizer_vocab_size = model_vocab_size
+
+    try:
+        # Function to create decoder with correct arguments
+        def create_decoder():
+            return decoder(max_pad=max_pad, embedding_dim=embedding_dim, dense_dim=dense_dim,
+                           batch_size=batch_size, vocab_size=model_vocab_size)
+
+        # Define custom objects
+        custom_objects = {
+            'Image_encoder': Image_encoder,
+            'global_attention': global_attention,
+            'One_Step_Decoder': One_Step_Decoder,
+            'decoder': create_decoder,
+            'create_chexnet': create_chexnet
+        }
+
+        # Load the model with custom objects
+        with tf.keras.utils.custom_object_scope(custom_objects):
+            model = tf.keras.models.load_model(model_path, compile=False)
+
+        st.success("Model loaded successfully!")
+
+        # Print model summary
+        st.write("Model Summary:")
+        model.summary(print_fn=lambda x: st.text(x))
+
+        st.success("Proceed to the next step.")
+
+    except Exception as e:
+        st.error(f"Error loading model: {str(e)}")
+        import traceback
+        st.error(traceback.format_exc())
+        return None, tokenizer
 
     return model, tokenizer
-
 
 def is_likely_chest_xray(image):
     """
@@ -245,7 +438,9 @@ medical_terms = {
     "interstitial": "Relating to the tissue and space around the air sacs of the lungs",
     "bilateral": "Affecting both sides",
     "airspace": "The part of the lung involved in gas exchange",
-    "disease": "A disorder of structure or function in a human, animal, or plant"
+    "disease": "A disorder of structure or function in a human, animal, or plant",
+    "paraesophageal": " Relating to the area near the esophagus",
+    "intrapulmonary": "Relating to the inside of the lungs",
 }
 
 
