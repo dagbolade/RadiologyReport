@@ -68,8 +68,8 @@ def create_tabs():
 @st.cache_resource
 def load_model_and_tokenizer():
     st.write("Loading model and tokenizer...")
-    # Update the model path to use the new .keras or .h5 file
-    model_path = 'Radiography/Attention_with_cheXNet_full_model'  # or use .h5 if you prefer
+
+    model_path = 'Radiography/Attention_with_cheXNet_full_model'
     tokenizer_path = 'Radiography/tokenizer/tokenizer.pickle'
 
     try:
