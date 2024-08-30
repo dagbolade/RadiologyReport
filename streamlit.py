@@ -66,7 +66,13 @@ def create_tabs():
 
 chexnet_weights = "Radiography/Copy of Copy of brucechou1983_CheXNet_Keras_0.3.0_weights.h5"
 
-
+def update_tokenizer(tokenizer, target_size):
+    current_size = len(tokenizer.word_index)
+    for i in range(current_size + 1, target_size + 1):
+        new_word = f'<extra_token_{i}>'
+        tokenizer.word_index[new_word] = i
+    tokenizer.index_word = {v: k for k, v in tokenizer.word_index.items()}
+    return tokenizer
 # Model and Tokenizer Loading
 
 def create_chexnet(chexnet_weights=chexnet_weights, input_size=(224, 224)):
@@ -88,86 +94,133 @@ def create_chexnet(chexnet_weights=chexnet_weights, input_size=(224, 224)):
     #since we are using attention here
     return chexnet
 
-
 class Image_encoder(tf.keras.layers.Layer):
-    def __init__(self, name="image_encoder_block"):
-        super().__init__(name=name)
-        self.chexnet = create_chexnet()  # Ensure this function is defined
+    """
+    This layer will output image backbone features after passing it through chexnet
+    """
+
+    def __init__(self,
+                 name="image_encoder_block"
+                 ):
+        super().__init__()
+        self.chexnet = create_chexnet(input_size=(224, 224))
         self.chexnet.trainable = False
         self.avgpool = AveragePooling2D()
+        # for i in range(10): #the last 10 layers of chexnet will be trained
+        #   self.chexnet.layers[-i].trainable = True
 
     def call(self, data):
-        op = self.chexnet(data)
-        op = self.avgpool(op)
-        shape = tf.shape(op)
-        op = tf.reshape(op, shape=(-1, shape[1] * shape[2], shape[3]))
+        op = self.chexnet(data)  # op shape: (None,7,7,1024)
+        op = self.avgpool(op)  # op shape (None,3,3,1024)
+        op = tf.reshape(op, shape=(-1, op.shape[1] * op.shape[2], op.shape[3]))  # op shape: (None,9,1024)
         return op
 
-    def get_config(self):
-        config = super().get_config()
-        return config
+
+def encoder(image1, image2, dense_dim, dropout_rate):
+    """
+    Takes image1,image2
+    gets the final encoded vector of these
+    """
+    # image1
+    im_encoder = Image_encoder()
+    bkfeat1 = im_encoder(image1)  # shape: (None,9,1024)
+    bk_dense = Dense(dense_dim, name='bkdense', activation='relu')  # shape: (None,9,512)
+    bkfeat1 = bk_dense(bkfeat1)
+
+    # image2
+    bkfeat2 = im_encoder(image2)  # shape: (None,9,1024)
+    bkfeat2 = bk_dense(bkfeat2)  # shape: (None,9,512)
+
+    # combining image1 and image2
+    concat = Concatenate(axis=1)([bkfeat1, bkfeat2])  # concatenating through the second axis shape: (None,18,1024)
+    bn = BatchNormalization(name="encoder_batch_norm")(concat)
+    dropout = Dropout(dropout_rate, name="encoder_dropout")(bn)
+    return dropout
 
 
 class global_attention(tf.keras.layers.Layer):
+    """
+    calculate global attention
+    """
+
     def __init__(self, dense_dim):
         super().__init__()
-        self.W1 = Dense(units=dense_dim)
-        self.W2 = Dense(units=dense_dim)
-        self.V = Dense(units=1)
+        # Intialize variables needed for Concat score function here
+        self.W1 = Dense(units=dense_dim)  # weight matrix of shape enc_units*dense_dim
+        self.W2 = Dense(units=dense_dim)  # weight matrix of shape dec_units*dense_dim
+        self.V = Dense(units=1)  # weight matrix of shape dense_dim*1
+        # op (None,98,1)
 
-    def call(self, encoder_output, decoder_h):
-        decoder_h = tf.expand_dims(decoder_h, axis=1)
-        tanh_input = self.W1(encoder_output) + self.W2(decoder_h)
+    def call(self, encoder_output,
+             decoder_h):  # here the encoded output will be the concatted image bk features shape: (None,98,dense_dim)
+        decoder_h = tf.expand_dims(decoder_h, axis=1)  # shape: (None,1,dense_dim)
+        tanh_input = self.W1(encoder_output) + self.W2(decoder_h)  # ouput_shape: batch_size*98*dense_dim
         tanh_output = tf.nn.tanh(tanh_input)
-        attention_weights = tf.nn.softmax(self.V(tanh_output), axis=1)
-        op = attention_weights * encoder_output
-        context_vector = tf.reduce_sum(op, axis=1)
-        return context_vector, attention_weights
+        attention_weights = tf.nn.softmax(self.V(tanh_output),
+                                          axis=1)  # shape= batch_size*98*1 getting attention alphas
+        op = attention_weights * encoder_output  # op_shape: batch_size*98*dense_dim  multiply all aplhas with corresponding context vector
+        context_vector = tf.reduce_sum(op,
+                                       axis=1)  # summing all context vector over the time period ie input length, output_shape: batch_size*dense_dim
 
-    def get_config(self):
-        config = super().get_config()
-        config.update({"dense_dim": self.W1.units})
-        return config
+        return context_vector, attention_weights
 
 
 class One_Step_Decoder(tf.keras.layers.Layer):
-    def __init__(self, vocab_size, embedding_dim, max_pad, dense_dim):
+    """
+    decodes a single token
+    """
+
+    def __init__(self, vocab_size, embedding_dim, max_pad, dense_dim, name="onestepdecoder"):
+        # Initialize decoder embedding layer, LSTM and any other objects needed
         super().__init__()
-        self.vocab_size = vocab_size
-        self.embedding_dim = embedding_dim
-        self.max_pad = max_pad
         self.dense_dim = dense_dim
         self.embedding = Embedding(input_dim=vocab_size + 1,
                                    output_dim=embedding_dim,
                                    input_length=max_pad,
                                    mask_zero=True,
-                                   name='onestepdecoder_embedding')
+                                   name='onestepdecoder_embedding'
+                                   )
         self.LSTM = GRU(units=self.dense_dim,
+                        # return_sequences=True,
                         return_state=True,
-                        name='onestepdecoder_LSTM')
+                        name='onestepdecoder_LSTM'
+                        )
         self.attention = global_attention(dense_dim=dense_dim)
         self.concat = Concatenate(axis=-1)
-        self.dense = Dense(dense_dim, activation='relu', name='onestepdecoder_embedding_dense')
+        self.dense = Dense(dense_dim, name='onestepdecoder_embedding_dense', activation='relu')
         self.final = Dense(vocab_size + 1, activation='softmax')
+        self.concat = Concatenate(axis=-1)
 
-    def call(self, input_to_decoder, encoder_output, decoder_h):
-        embedding_op = self.embedding(input_to_decoder)
-        context_vector, attention_weights = self.attention(encoder_output, decoder_h)
+
+    @tf.function
+    def call(self, input_to_decoder, encoder_output, decoder_h):  # ,decoder_c):
+        '''
+            One step decoder mechanisim step by step:
+          A. Pass the input_to_decoder to the embedding layer and then get the output(batch_size,1,embedding_dim)
+          B. Using the encoder_output and decoder hidden state, compute the context vector.
+          C. Concat the context vector with the step A output
+          D. Pass the Step-C output to LSTM/GRU and get the decoder output and states(hidden and cell state)
+          E. Pass the decoder output to dense layer(vocab size) and store the result into output.
+          F. Return the states from step D, output from Step E, attention weights from Step -B
+
+          here state_h,state_c are decoder states
+        '''
+        embedding_op = self.embedding(input_to_decoder)  # output shape = batch_size*1*embedding_shape (only 1 token)
+
+        context_vector, attention_weights = self.attention(encoder_output,
+                                                           decoder_h)  # passing hidden state h of decoder and encoder output
+        # context_vector shape: batch_size*dense_dim we need to add time dimension
         context_vector_time_axis = tf.expand_dims(context_vector, axis=1)
-        concat_input = self.concat([context_vector_time_axis, embedding_op])
-        output, decoder_h = self.LSTM(concat_input, initial_state=decoder_h)
-        output = self.final(output)
-        return output, decoder_h, attention_weights
+        # now we will combine attention output context vector with next word input to the lstm here we will be teacher forcing
+        concat_input = self.concat([context_vector_time_axis,
+                                    embedding_op])  # output dimension = batch_size*input_length(here it is 1)*(dense_dim+embedding_dim)
 
-    def get_config(self):
-        config = super().get_config()
-        config.update({
-            "vocab_size": self.vocab_size,
-            "embedding_dim": self.embedding_dim,
-            "max_pad": self.max_pad,
-            "dense_dim": self.dense_dim
-        })
-        return config
+        output, decoder_h = self.LSTM(concat_input, initial_state=decoder_h)
+        # output shape = batch*1*dense_dim and decoder_h,decoder_c has shape = batch*dense_dim
+        # we need to remove the time axis from this decoder_output
+
+        output = self.final(output)  # shape = batch_size*decoder vocab size
+        return output, decoder_h, attention_weights
 
 
 class decoder(tf.keras.Model):
@@ -175,46 +228,30 @@ class decoder(tf.keras.Model):
     Decodes the encoder output and caption
     """
 
-    def __init__(self, max_pad, embedding_dim, dense_dim, score_fun='general', batch_size=32, vocab_size=10000):
+    def __init__(self, max_pad, embedding_dim, dense_dim, batch_size, vocab_size):
         super().__init__()
-        self.max_pad = max_pad
-        self.embedding_dim = embedding_dim
-        self.dense_dim = dense_dim
-        self.batch_size = batch_size
-        self.vocab_size = vocab_size
         self.onestepdecoder = One_Step_Decoder(vocab_size=vocab_size, embedding_dim=embedding_dim, max_pad=max_pad,
                                                dense_dim=dense_dim)
         self.output_array = tf.TensorArray(tf.float32, size=max_pad)
+        self.max_pad = max_pad
+        self.batch_size = batch_size
+        self.dense_dim = dense_dim
 
     @tf.function
-    def call(self, encoder_output, caption):
-        decoder_h, decoder_c = tf.zeros_like(encoder_output[:, 0]), tf.zeros_like(encoder_output[:, 0])
+    def call(self, encoder_output,
+             caption):  # ,decoder_h,decoder_c): #caption : (None,max_pad), encoder_output: (None,dense_dim)
+        decoder_h, decoder_c = tf.zeros_like(encoder_output[:, 0]), tf.zeros_like(
+            encoder_output[:, 0])  # decoder_h, decoder_c
         output_array = tf.TensorArray(tf.float32, size=self.max_pad)
-        for timestep in range(self.max_pad):
+        for timestep in range(self.max_pad):  # iterating through all timesteps ie through max_pad
             output, decoder_h, attention_weights = self.onestepdecoder(caption[:, timestep:timestep + 1],
                                                                        encoder_output, decoder_h)
-            output_array = output_array.write(timestep, output)
+            output_array = output_array.write(timestep, output)  # timestep*batch_size*vocab_size
 
-        self.output_array = tf.transpose(output_array.stack(), [1, 0, 2])
+        self.output_array = tf.transpose(output_array.stack(), [1, 0,
+                                                                2])  # .stack :Return the values in the TensorArray as a stacked Tensor.)
+        # shape output_array: (batch_size,max_pad,vocab_size)
         return self.output_array
-
-    def get_config(self):
-        config = super().get_config()
-        config.update({
-            "max_pad": self.max_pad,
-            "embedding_dim": self.embedding_dim,
-            "dense_dim": self.dense_dim,
-            "batch_size": self.batch_size,
-            "vocab_size": self.vocab_size
-        })
-        return config
-
-    @classmethod
-    def from_config(cls, config):
-        return cls(**config)
-
-
-# Model loading function
 # Model loading function
 @st.cache_resource
 def load_model_and_tokenizer():
@@ -223,49 +260,40 @@ def load_model_and_tokenizer():
     model_path = 'Radiography/Attention_with_cheXNet_full_model1.h5'
     tokenizer_path = 'Radiography/tokenizer/tokenizer.pickle'
 
-    # First, load the tokenizer
+    # Load the tokenizer
     try:
         tokenizer = joblib.load(tokenizer_path)
         st.success("Tokenizer loaded successfully!")
-        tokenizer_vocab_size = len(tokenizer.word_index) + 1  # Add 1 for the padding token
-        st.write(f"Tokenizer vocabulary size: {tokenizer_vocab_size}")
+        vocab_size = len(tokenizer.word_index)  # Do not add 1 here
+        st.write(f"Tokenizer vocabulary size: {vocab_size}")
     except Exception as e:
         st.error(f"Error loading tokenizer: {str(e)}")
         return None, None
 
     # Define the parameters for the decoder
+    input_size = (224, 224)
     max_pad = 28
+    batch_size = 32
     embedding_dim = 300
     dense_dim = 512
-    batch_size = 32
-    model_vocab_size = 1413  # Set this to match the model's expected vocabulary size
-
-    # Update tokenizer if necessary
-    if model_vocab_size > tokenizer_vocab_size:
-        st.warning(f"Updating tokenizer to match model vocabulary size ({model_vocab_size})")
-        for i in range(tokenizer_vocab_size, model_vocab_size):
-            tokenizer.word_index[f'<extra_token_{i}>'] = i
-        tokenizer.index_word = {v: k for k, v in tokenizer.word_index.items()}
-        tokenizer_vocab_size = model_vocab_size
+    dropout_rate = 0.2
 
     try:
-        # Function to create decoder with correct arguments
-        def create_decoder():
-            return decoder(max_pad=max_pad, embedding_dim=embedding_dim, dense_dim=dense_dim,
-                           batch_size=batch_size, vocab_size=model_vocab_size)
+        # Clear the Keras session
+        tf.keras.backend.clear_session()
 
-        # Define custom objects
-        custom_objects = {
-            'Image_encoder': Image_encoder,
-            'global_attention': global_attention,
-            'One_Step_Decoder': One_Step_Decoder,
-            'decoder': create_decoder,
-            'create_chexnet': create_chexnet
-        }
+        # Create the model structure
+        image1 = Input(shape=(input_size + (3,)))
+        image2 = Input(shape=(input_size + (3,)))
+        caption = Input(shape=(max_pad,))
 
-        # Load the model with custom objects
-        with tf.keras.utils.custom_object_scope(custom_objects):
-            model = tf.keras.models.load_model(model_path, compile=False)
+        encoder_output = encoder(image1, image2, dense_dim, dropout_rate)
+        output = decoder(max_pad, embedding_dim, dense_dim, batch_size, vocab_size)(encoder_output, caption)
+
+        model = tf.keras.Model(inputs=[image1, image2, caption], outputs=output)
+
+        # Load the weights
+        model.load_weights(model_path)
 
         st.success("Model loaded successfully!")
 
