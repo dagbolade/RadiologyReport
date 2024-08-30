@@ -253,6 +253,8 @@ class decoder(tf.keras.Model):
         # shape output_array: (batch_size,max_pad,vocab_size)
         return self.output_array
 # Model loading function
+import pickle
+
 @st.cache_resource
 def load_model_and_tokenizer():
     st.write("Loading model and tokenizer...")
