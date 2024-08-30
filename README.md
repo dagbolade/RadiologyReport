@@ -1,6 +1,6 @@
 # Automated Radiology Report Generation using Deep Learning for Chest X-Ray Scans
 
-![Demo Video](Demo.mp4)
+![Demo Video](Demo.gif)
 
 ## Project Overview
 
