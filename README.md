@@ -20,7 +20,7 @@ The model was trained on a publicly available dataset from Indiana University, c
 
 ## Key Features
 
-- Utilizes advanced CNN architectures (CheXNet, InceptionV3, EfficientNet) for feature extraction
+- Uses advanced CNN architectures (CheXNet, InceptionV3, EfficientNet) for feature extraction
 - Implements a global attention mechanism for focusing on relevant image areas
 - Generates coherent and clinically relevant radiology reports
 - Provides visualization tools including attention maps and saliency maps
