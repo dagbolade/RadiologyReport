@@ -262,7 +262,8 @@ def load_model_and_tokenizer():
 
     # Load the tokenizer
     try:
-        tokenizer = joblib.load(tokenizer_path)
+        with open(tokenizer_path, 'rb') as handle:
+            tokenizer = pickle.load(handle)
         st.success("Tokenizer loaded successfully!")
         vocab_size = len(tokenizer.word_index)  # Do not add 1 here
         st.write(f"Tokenizer vocabulary size: {vocab_size}")
