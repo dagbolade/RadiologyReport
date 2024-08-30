@@ -14,7 +14,11 @@ from tensorflow.keras.layers import Dense, GRU, Embedding, Input, Concatenate, B
 from tensorflow.keras.models import Model
 import streamlit as st
 import joblib
-
+import sys
+from tensorflow import keras
+sys.modules['keras'] = keras
+from tensorflow.keras import preprocessing
+sys.modules['keras.src.preprocessing'] = preprocessing
 import streamlit as st
 import tensorflow as tf
 import numpy as np
