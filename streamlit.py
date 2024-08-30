@@ -74,7 +74,7 @@ def load_model_and_tokenizer():
 
     try:
         model = tf.keras.models.load_model(model_path, compile=False)
-        st.success("Model loaded successfully!")
+        st.success("Model loaded successfully!!!, proeed to the next step")
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
         st.error(f"Model path: {model_path}")
