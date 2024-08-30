@@ -69,7 +69,7 @@ def create_tabs():
 def load_model_and_tokenizer():
     st.write("Loading model and tokenizer...")
 
-    model_path = 'Radiography/Attention_with_cheXNet_full_model'
+    model_path = 'Radiography/Attention_with_cheXNet_full_model1'
     tokenizer_path = 'Radiography/tokenizer/tokenizer.pickle'
 
     try:
