@@ -302,13 +302,6 @@ def load_model_and_tokenizer():
         model.load_weights(model_path)
 
         st.success("Model loaded successfully!")
-
-        # Print model summary
-        st.write("Model Summary:")
-        string_io = io.StringIO()
-        model.summary(print_fn=lambda x: string_io.write(x + '\n'))
-        st.text(string_io.getvalue())
-
         st.success("Proceed to the next step.")
 
     except Exception as e:
