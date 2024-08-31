@@ -689,6 +689,10 @@ def main():
     st.title("Chest X-ray Report Generator")
     st.markdown("<small>by David</small>", unsafe_allow_html=True)
 
+
+    st.write(f'tensorflow: {tf.__version__}')
+    st.write(f'streamlit: {st.__version__}')
+
     model, tokenizer = load_model_and_tokenizer()
 
     # First and last name input
