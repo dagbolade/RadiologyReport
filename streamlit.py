@@ -97,7 +97,7 @@ def create_chexnet(chexnet_weights=chexnet_weights, input_size=(224, 224)):
         -3].output)  #we will be taking the 3rd last layer (here it is layer before global avgpooling)
     #since we are using attention here
     return chexnet
-
+from tensorflow.keras.layers import AveragePooling2D
 class Image_encoder(tf.keras.layers.Layer):
     """
     This layer will output image backbone features after passing it through chexnet
@@ -109,7 +109,7 @@ class Image_encoder(tf.keras.layers.Layer):
         super().__init__()
         self.chexnet = create_chexnet(input_size=(224, 224))
         self.chexnet.trainable = False
-        self.avgpool = AveragePooling2D()
+        self.avgpool = AveragePooling2D(pool_size=(2, 2))
         # for i in range(10): #the last 10 layers of chexnet will be trained
         #   self.chexnet.layers[-i].trainable = True
 
