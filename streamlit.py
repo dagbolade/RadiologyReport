@@ -174,13 +174,12 @@ class One_Step_Decoder(tf.keras.layers.Layer):
     decodes a single token
     """
 
-    def __init__(self, vocab_size, embedding_dim, max_pad, dense_dim, name="onestepdecoder"):
+    def __init__(self, vocab_size, embedding_dim, dense_dim, name="onestepdecoder"):
         # Initialize decoder embedding layer, LSTM and any other objects needed
         super().__init__()
         self.dense_dim = dense_dim
         self.embedding = Embedding(input_dim=vocab_size + 1,
                                    output_dim=embedding_dim,
-                                   input_length=max_pad,
                                    mask_zero=True,
                                    name='onestepdecoder_embedding'
                                    )
@@ -234,7 +233,7 @@ class decoder(tf.keras.Model):
 
     def __init__(self, max_pad, embedding_dim, dense_dim, batch_size, vocab_size):
         super().__init__()
-        self.onestepdecoder = One_Step_Decoder(vocab_size=vocab_size, embedding_dim=embedding_dim, max_pad=max_pad,
+        self.onestepdecoder = One_Step_Decoder(vocab_size=vocab_size, embedding_dim=embedding_dim,
                                                dense_dim=dense_dim)
         self.output_array = tf.TensorArray(tf.float32, size=max_pad)
         self.max_pad = max_pad
