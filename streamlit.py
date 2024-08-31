@@ -10,14 +10,17 @@ warnings.filterwarnings('ignore', category=Warning)
 # Suppress TensorFlow logging
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-from tensorflow.keras.layers import Dense, GRU, Embedding, Input, Concatenate, BatchNormalization, Dropout, AveragePooling2D, GlobalAveragePooling2D
+from tensorflow.keras.layers import Dense, GRU, Embedding, Input, Concatenate, BatchNormalization, Dropout, \
+    AveragePooling2D, GlobalAveragePooling2D
 from tensorflow.keras.models import Model
 import streamlit as st
 import joblib
 import sys
 from tensorflow import keras
+
 sys.modules['keras'] = keras
 from tensorflow.keras import preprocessing
+
 sys.modules['keras.src.preprocessing'] = preprocessing
 import streamlit as st
 import tensorflow as tf
@@ -70,6 +73,7 @@ def create_tabs():
 
 chexnet_weights = "Radiography/Copy of Copy of brucechou1983_CheXNet_Keras_0.3.0_weights.h5"
 
+
 def update_tokenizer(tokenizer, target_size):
     current_size = len(tokenizer.word_index)
     for i in range(current_size + 1, target_size + 1):
@@ -77,6 +81,8 @@ def update_tokenizer(tokenizer, target_size):
         tokenizer.word_index[new_word] = i
     tokenizer.index_word = {v: k for k, v in tokenizer.word_index.items()}
     return tokenizer
+
+
 # Model and Tokenizer Loading
 
 def create_chexnet(chexnet_weights=chexnet_weights, input_size=(224, 224)):
@@ -97,7 +103,11 @@ def create_chexnet(chexnet_weights=chexnet_weights, input_size=(224, 224)):
         -3].output)  #we will be taking the 3rd last layer (here it is layer before global avgpooling)
     #since we are using attention here
     return chexnet
+
+
 from tensorflow.keras.layers import AveragePooling2D
+
+
 class Image_encoder(tf.keras.layers.Layer):
     """
     This layer will output image backbone features after passing it through chexnet
@@ -194,7 +204,6 @@ class One_Step_Decoder(tf.keras.layers.Layer):
         self.final = Dense(vocab_size + 1, activation='softmax')
         self.concat = Concatenate(axis=-1)
 
-
     @tf.function
     def call(self, input_to_decoder, encoder_output, decoder_h):  # ,decoder_c):
         '''
@@ -255,8 +264,11 @@ class decoder(tf.keras.Model):
                                                                 2])  # .stack :Return the values in the TensorArray as a stacked Tensor.)
         # shape output_array: (batch_size,max_pad,vocab_size)
         return self.output_array
+
+
 # Model loading function
 import pickle
+
 
 @st.cache_resource
 def load_model_and_tokenizer():
@@ -312,6 +324,7 @@ def load_model_and_tokenizer():
 
     return model, tokenizer
 
+
 def is_likely_chest_xray(image):
     """
     Basic check to determine if an image is likely to be a chest X-ray.
@@ -349,20 +362,26 @@ def process_uploaded_image(uploaded_file):
 
 # Image Processing
 def preprocess_image(image, input_size=(224, 224)):
-    image = cv2.resize(image, input_size, interpolation=cv2.INTER_NEAREST)
+    image = Image.fromarray(image)
+    image = image.resize(input_size, Image.NEAREST)
+    image = np.array(image)
+    image = np.repeat(image[..., np.newaxis], 3, -1)  # Convert grayscale to RGB
     image = tf.cast(image, tf.float32) / 255.0
     image = tf.expand_dims(image, axis=0)  # Add batch dimension
     return image
 
-import cv2
+
 # Prediction Function
 def greedy_search_predict(image1, image2, model, tokenizer, input_size=(224, 224)):
     """
     Given two x-ray images, predicts the impression part of the x-ray using a greedy search algorithm
     """
+
     # Preprocess images
     def preprocess(image):
-        image = cv2.resize(image, input_size, interpolation=cv2.INTER_NEAREST)
+        image = Image.fromarray(image)
+        image = image.resize(input_size, Image.NEAREST)
+        image = np.array(image)
         image = np.repeat(image[..., np.newaxis], 3, -1)  # Convert grayscale to RGB
         image = tf.cast(image, tf.float32) / 255.0
         image = tf.expand_dims(image, axis=0)
@@ -416,6 +435,8 @@ def greedy_search_predict(image1, image2, model, tokenizer, input_size=(224, 224
     predicted_text = tokenizer.sequences_to_texts([predicted_caption])[0]
     st.write(f"Debug: Final predicted text: {predicted_text}")
     return predicted_text, attention_weights_list
+
+
 def visualize_attention(image, attention_weights, generated_text):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
 
@@ -523,7 +544,6 @@ def predict_on_upload(image_1, image_2, model_tokenizer):
 
         st.markdown("### **Impression:**")
         st.write(predicted_text)
-
 
         st.markdown("### Attention Visualization")
         st.write("The heatmap below shows which parts of the X-ray the model focused on while generating the report.")
