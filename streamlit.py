@@ -53,6 +53,7 @@ SUPPORTED_LANGUAGES = {
     'de': 'German',
     'zh-cn': 'Chinese (Simplified)',
     'HI': 'Hindi',
+    'yo': 'Yoruba',
 }
 
 
@@ -261,7 +262,8 @@ class decoder(tf.keras.Model):
             output_array = output_array.write(timestep, output)  # timestep*batch_size*vocab_size
 
         self.output_array = tf.transpose(output_array.stack(), [1, 0,
-                                                                2])  # .stack :Return the values in the TensorArray as a stacked Tensor.)
+                                                                2])  # .stack :Return the values in the TensorArray
+        # as a stacked Tensor.)
         # shape output_array: (batch_size,max_pad,vocab_size)
         return self.output_array
 
@@ -272,7 +274,7 @@ import pickle
 
 @st.cache_resource
 def load_model_and_tokenizer():
-    st.write("Loading model and tokenizer...")
+    #st.write("Loading model and tokenizer...")
 
     model_path = 'Radiography/Attention_with_cheXNet_full_model1.h5'
     tokenizer_path = 'Radiography/tokenizer/tokenizer.pickle'
@@ -281,9 +283,10 @@ def load_model_and_tokenizer():
     try:
         with open(tokenizer_path, 'rb') as handle:
             tokenizer = pickle.load(handle)
-        st.success("Tokenizer loaded successfully!")
+        #st.success("Tokenizer loaded successfully!")
         vocab_size = len(tokenizer.word_index)
-        st.write(f"Tokenizer vocabulary size: {vocab_size}")
+        # Debug
+        #st.write(f"Tokenizer vocabulary size: {vocab_size}")
     except Exception as e:
         st.error(f"Error loading tokenizer: {str(e)}")
         return None, None
@@ -297,10 +300,10 @@ def load_model_and_tokenizer():
     dropout_rate = 0.2
 
     try:
-        # Clear the Keras session
+        # Clear the Keras session so that we can load the model multiple times
         tf.keras.backend.clear_session()
 
-        # Create the model structure
+        # Creating the model structure
         image1 = Input(shape=(input_size + (3,)))
         image2 = Input(shape=(input_size + (3,)))
         caption = Input(shape=(max_pad,))
@@ -313,8 +316,7 @@ def load_model_and_tokenizer():
         # Load the weights
         model.load_weights(model_path)
 
-        st.success("Model loaded successfully!")
-        st.success("Proceed to the next step.")
+        #st.success("Model loaded successfully!")
 
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
@@ -417,7 +419,6 @@ def greedy_search_predict(image1, image2, model, tokenizer, input_size=(224, 224
     enc_op = model.get_layer('encoder_batch_norm')(concat)
     enc_op = model.get_layer('encoder_dropout')(enc_op)
 
-
     decoder_h = tf.zeros_like(enc_op[:, 0])
     a = []
     max_pad = 29
@@ -438,7 +439,7 @@ def greedy_search_predict(image1, image2, model, tokenizer, input_size=(224, 224
         predicted_id = tf.squeeze(max_prob).numpy()
 
         #st.write(
-            #f"Debug: Step {i}, Predicted ID: {predicted_id}, Word: {tokenizer.index_word.get(predicted_id, '<UNK>')}")
+        #f"Debug: Step {i}, Predicted ID: {predicted_id}, Word: {tokenizer.index_word.get(predicted_id, '<UNK>')}")
 
         if predicted_id == last_predicted_id:
             repeat_count += 1
@@ -449,7 +450,7 @@ def greedy_search_predict(image1, image2, model, tokenizer, input_size=(224, 224
         #st.write(f"Debug: Repeat count: {repeat_count}")
 
         if repeat_count >= max_repeat:
-           # st.write(f"Debug: Breaking loop due to excessive repetition")
+            # st.write(f"Debug: Breaking loop due to excessive repetition")
             break
 
         caption = np.array([[predicted_id]])  # will be sent to onestepdecoder for next iteration
@@ -467,8 +468,6 @@ def greedy_search_predict(image1, image2, model, tokenizer, input_size=(224, 224
     predicted_text = tokenizer.sequences_to_texts([a])[0]
     #st.write(f"Debug: Final predicted text: {predicted_text}")
     return predicted_text, attention_weights
-
-
 
 
 def visualize_attention(image, attention_weights, generated_text):
@@ -559,18 +558,16 @@ def predict_on_upload(image_1, image_2, model_tokenizer):
     if image_1 is not None:
         image_1 = np.array(Image.open(image_1).convert("L"))  # Convert to grayscale
 
-
         if image_2 is None:
             image_2 = image_1
         else:
             image_2 = np.array(Image.open(image_2).convert("L"))  # Convert to grayscale
 
-
         st.image([image_1, image_2], width=300)
 
-        st.write("Debug: Starting prediction")
+        st.write("Starting prediction process...")
         predicted_text, attention_weights = greedy_search_predict(image_1, image_2, model, tokenizer)
-        st.write("Debug: Prediction completed")
+        st.write("Prediction completed successfully!")
 
         st.markdown("### **Impression:**")
         st.write(predicted_text)
@@ -679,11 +676,11 @@ def delete_report(index):
 def main():
     load_and_display_logo()
     st.title("Chest X-ray Report Generator")
-    st.markdown("<small>by David</small>", unsafe_allow_html=True)
+    st.markdown("<small>by David Agbolade</small>", unsafe_allow_html=True)
 
-
-    st.write(f'tensorflow: {tf.__version__}')
-    st.write(f'streamlit: {st.__version__}')
+    # debug
+    #st.write(f'tensorflow: {tf.__version__}')
+    #st.write(f'streamlit: {st.__version__}')
 
     model, tokenizer = load_model_and_tokenizer()
 
@@ -705,7 +702,7 @@ def main():
     tab1, tab2, tab3, tab4 = st.tabs(["About", "How it works", "Upload X-rays", "Report History"])
 
     with tab3:
-        st.markdown("<h2 style='text-align: center; color: #0066cc;'>Patient X-ray Report</h2>", unsafe_allow_html=True)
+
         st.info(
             f"Generating report for patient: {patient_first_name} {patient_last_name}"
         )
@@ -753,7 +750,8 @@ def main():
                         clean_word = word.lower().strip('.,')
                         if clean_word in medical_terms:
                             html_words.append(
-                                f'<span title="{medical_terms[clean_word]}" style="text-decoration: underline; text-decoration-style: dotted;">{word}</span>')
+                                f'<span title="{medical_terms[clean_word]}" style="text-decoration: underline; '
+                                f'text-decoration-style: dotted;">{word}</span>')
                         else:
                             html_words.append(word)
 
@@ -856,7 +854,7 @@ def main():
         """)
 
     st.sidebar.subheader("Model Information")
-    st.sidebar.write("Model: Attention With BruceChou Pretrined CheXNet Model")
+    st.sidebar.write("Model: Attention With BruceChou Pretrained CheXNet Model")
     st.sidebar.write("Training Data: 7471 chest X-rays images and 3955")
 
     # using datetime module to get the current date and time to show last updated
@@ -864,10 +862,12 @@ def main():
 
     # Add a Note
 
-    st.sidebar.warning("Note: The Report used in building this sytem has a lot of negative cases, so "
-                       "the model might generate a negative report for a normal X-ray image. To make this system better,"
-                       "it would need to be trained on a large dataset of chest X-rays with a balanced distribution of "
-                       "positive and negative cases.")
+    st.sidebar.warning("Note: The model used in building this system has been trained on a dataset with a high number "
+                       "of 'negative' cases, where no abnormalities were detected (e.g., 'no acute cardiopulmonary "
+                       "disease'). This could result in the model generating a 'normal' report for an X-ray image "
+                       "even when an abnormality is present. To improve the system's performance, it would need to be "
+                       "trained on a larger and more balanced dataset of chest X-rays, containing a more equal "
+                       "distribution of both positive (abnormal) and negative (normal) cases.")
 
     with tab4:
         st.header("Report History")
