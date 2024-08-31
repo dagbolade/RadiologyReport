@@ -408,9 +408,6 @@ def greedy_search_predict(image1, image2, model, tokenizer, input_size=(224, 224
     image1 = preprocess_image(image1)
     image2 = preprocess_image(image2)
 
-    st.write(f"Debug: Preprocessed Image 1 shape: {image1.shape}")
-    st.write(f"Debug: Preprocessed Image 2 shape: {image2.shape}")
-
     # Generate encoder outputs
     image1 = model.get_layer('image_encoder')(image1)
     image2 = model.get_layer('image_encoder')(image2)
@@ -420,7 +417,6 @@ def greedy_search_predict(image1, image2, model, tokenizer, input_size=(224, 224
     enc_op = model.get_layer('encoder_batch_norm')(concat)
     enc_op = model.get_layer('encoder_dropout')(enc_op)
 
-    st.write(f"Debug: Encoder output shape: {enc_op.shape}")
 
     decoder_h = tf.zeros_like(enc_op[:, 0])
     a = []
@@ -435,14 +431,14 @@ def greedy_search_predict(image1, image2, model, tokenizer, input_size=(224, 224
 
         output, decoder_h, attention_weights = model.get_layer('decoder').onestepdecoder(caption, enc_op, decoder_h)
 
-        st.write(f"Debug: Step {i}, Output shape: {output.shape}")
-        st.write(f"Debug: Step {i}, Output sample: {output[0][:10]}")
+        #st.write(f"Debug: Step {i}, Output shape: {output.shape}")
+        #st.write(f"Debug: Step {i}, Output sample: {output[0][:10]}")
 
         max_prob = tf.argmax(output, axis=-1)  # tf.Tensor of shape = (1,1)
         predicted_id = tf.squeeze(max_prob).numpy()
 
-        st.write(
-            f"Debug: Step {i}, Predicted ID: {predicted_id}, Word: {tokenizer.index_word.get(predicted_id, '<UNK>')}")
+        #st.write(
+            #f"Debug: Step {i}, Predicted ID: {predicted_id}, Word: {tokenizer.index_word.get(predicted_id, '<UNK>')}")
 
         if predicted_id == last_predicted_id:
             repeat_count += 1
@@ -450,26 +446,26 @@ def greedy_search_predict(image1, image2, model, tokenizer, input_size=(224, 224
             repeat_count = 0
         last_predicted_id = predicted_id
 
-        st.write(f"Debug: Repeat count: {repeat_count}")
+        #st.write(f"Debug: Repeat count: {repeat_count}")
 
         if repeat_count >= max_repeat:
-            st.write(f"Debug: Breaking loop due to excessive repetition")
+           # st.write(f"Debug: Breaking loop due to excessive repetition")
             break
 
         caption = np.array([[predicted_id]])  # will be sent to onestepdecoder for next iteration
 
         if predicted_id == tokenizer.word_index.get('<end>', 1):
-            st.write(f"Debug: End token encountered, breaking loop")
+            #st.write(f"Debug: End token encountered, breaking loop")
             break
         else:
             a.append(predicted_id)
 
         if len(a) >= max_pad:
-            st.write(f"Debug: Max length reached, breaking loop")
+            #st.write(f"Debug: Max length reached, breaking loop")
             break
 
     predicted_text = tokenizer.sequences_to_texts([a])[0]
-    st.write(f"Debug: Final predicted text: {predicted_text}")
+    #st.write(f"Debug: Final predicted text: {predicted_text}")
     return predicted_text, attention_weights
 
 
@@ -562,17 +558,13 @@ def predict_on_upload(image_1, image_2, model_tokenizer):
     model, tokenizer = model_tokenizer
     if image_1 is not None:
         image_1 = np.array(Image.open(image_1).convert("L"))  # Convert to grayscale
-        st.write("Debug: Image 1 shape:", image_1.shape)
-        st.write("Debug: Image 1 dtype:", image_1.dtype)
-        st.write("Debug: Image 1 min-max:", np.min(image_1), np.max(image_1))
+
 
         if image_2 is None:
             image_2 = image_1
         else:
             image_2 = np.array(Image.open(image_2).convert("L"))  # Convert to grayscale
-            st.write("Debug: Image 2 shape:", image_2.shape)
-            st.write("Debug: Image 2 dtype:", image_2.dtype)
-            st.write("Debug: Image 2 min-max:", np.min(image_2), np.max(image_2))
+
 
         st.image([image_1, image_2], width=300)
 
