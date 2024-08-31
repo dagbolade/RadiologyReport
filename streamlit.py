@@ -381,28 +381,36 @@ def greedy_search_predict(image1, image2, model, tokenizer):
     predicted_caption = []
     attention_weights_list = []
 
-    for i in range(max_pad):
-        if i == 0:
-            caption = np.array(tokenizer.texts_to_sequences(['<cls>']))
+    caption = np.array(tokenizer.texts_to_sequences(['<cls>']))
 
+    for i in range(max_pad):
         caption = tf.cast(caption, dtype=tf.float32)
 
         output, decoder_h, attention_weights = model.get_layer('decoder').onestepdecoder(caption, enc_op, decoder_h)
         attention_weights_list.append(attention_weights)
 
-        max_prob = tf.argmax(output, axis=-1)
-        predicted_id = max_prob.numpy()[0]
+        st.write(f"Debug: Step {i}, Output shape: {output.shape}")
 
-        if predicted_id == tokenizer.word_index.get('<end>', 1):
+        if len(output.shape) == 3:
+            predicted_id = tf.argmax(output, axis=-1).numpy()[0][0]
+        elif len(output.shape) == 2:
+            predicted_id = tf.argmax(output, axis=-1).numpy()[0]
+        else:
+            st.write(f"Debug: Unexpected output shape: {output.shape}")
+            break
+
+        st.write(f"Debug: Step {i}, Predicted ID: {predicted_id}, Current caption length: {len(predicted_caption)}")
+
+        if predicted_id == tokenizer.word_index.get('<end>', 1) or len(predicted_caption) >= max_pad:
+            st.write(f"Debug: Breaking loop at step {i}")
             break
 
         predicted_caption.append(predicted_id)
         caption = np.array([[predicted_id]])
 
     predicted_text = tokenizer.sequences_to_texts([predicted_caption])[0]
+    st.write(f"Debug: Final predicted text: {predicted_text}")
     return predicted_text, attention_weights_list
-
-
 def visualize_attention(image, attention_weights, generated_text):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
 
@@ -489,14 +497,21 @@ def explain_medical_terms(text):
 def predict_on_upload(image_1, image_2, model_tokenizer):
     model, tokenizer = model_tokenizer
     if image_1 is not None:
+        st.write("Debug: Image 1 shape:", image_1.shape)
         image_1 = np.array(Image.open(image_1).convert("L"))  # Convert to grayscale
+        st.write("Debug: Processed Image 1 shape:", image_1.shape)
         if image_2 is None:
             image_2 = image_1
         else:
             image_2 = np.array(Image.open(image_2).convert("L"))  # Convert to grayscale
+        st.write("Debug: Image 2 shape:", image_2.shape)
 
         st.image([image_1, image_2], width=300)
+
+        st.write("Debug: Starting prediction")
         predicted_text, attention_weights_list = greedy_search_predict(image_1, image_2, model, tokenizer)
+        st.write("Debug: Prediction completed")
+
         st.markdown("### **Impression:**")
         st.write(predicted_text)
 
