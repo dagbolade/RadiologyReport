@@ -372,77 +372,107 @@ def preprocess_image(image, input_size=(224, 224)):
 
 
 # Prediction Function
+import numpy as np
+import tensorflow as tf
+
+
 def greedy_search_predict(image1, image2, model, tokenizer, input_size=(224, 224)):
     """
     Given two x-ray images, predicts the impression part of the x-ray using a greedy search algorithm
     """
 
     # Preprocess images
-    def preprocess(image):
-        image = Image.fromarray(image)
-        image = image.resize(input_size, Image.NEAREST)
-        image = np.array(image)
-        image = np.repeat(image[..., np.newaxis], 3, -1)  # Convert grayscale to RGB
-        image = tf.cast(image, tf.float32) / 255.0
+    def preprocess_image(image):
+        # Convert to numpy array if it's not already
+        if not isinstance(image, np.ndarray):
+            image = np.array(image)
+
+        # Ensure the image is 2D grayscale
+        if len(image.shape) == 3:
+            image = image[:, :, 0]  # Take the first channel if it's (height, width, channels)
+
+        # Resize the image
+        image = tf.image.resize(tf.expand_dims(image, axis=-1), input_size)
+
+        # Convert grayscale to 3-channel
+        image = tf.repeat(image, 3, axis=-1)
+
+        # Add batch dimension
         image = tf.expand_dims(image, axis=0)
+
+        # Convert to float and normalize
+        image = tf.cast(image, tf.float32) / 255.0
+
         return image
 
-    image1 = preprocess(image1)
-    image2 = preprocess(image2)
+    image1 = preprocess_image(image1)
+    image2 = preprocess_image(image2)
 
     st.write(f"Debug: Preprocessed Image 1 shape: {image1.shape}")
     st.write(f"Debug: Preprocessed Image 2 shape: {image2.shape}")
 
     # Generate encoder outputs
-    image1_encoded = model.get_layer('image_encoder')(image1)
-    image2_encoded = model.get_layer('image_encoder')(image2)
-    image1_encoded = model.get_layer('bkdense')(image1_encoded)
-    image2_encoded = model.get_layer('bkdense')(image2_encoded)
-
-    concat = model.get_layer('concatenate')([image1_encoded, image2_encoded])
+    image1 = model.get_layer('image_encoder')(image1)
+    image2 = model.get_layer('image_encoder')(image2)
+    image1 = model.get_layer('bkdense')(image1)
+    image2 = model.get_layer('bkdense')(image2)
+    concat = model.get_layer('concatenate')([image1, image2])
     enc_op = model.get_layer('encoder_batch_norm')(concat)
     enc_op = model.get_layer('encoder_dropout')(enc_op)
 
-    st.write(f"Debug: Starting prediction process")
     st.write(f"Debug: Encoder output shape: {enc_op.shape}")
 
     decoder_h = tf.zeros_like(enc_op[:, 0])
-    predicted_caption = []
-    attention_weights_list = []
+    a = []
     max_pad = 29
-
-    caption = np.array(tokenizer.texts_to_sequences(['<cls>']))
-    st.write(f"Debug: Initial caption token: {caption}")
+    repeat_count = 0
+    last_predicted_id = None
+    max_repeat = 3  # Maximum number of allowed repetitions
 
     for i in range(max_pad):
-        caption = tf.cast(caption, dtype=tf.float32)
+        if i == 0:  # if first word
+            caption = np.array(tokenizer.texts_to_sequences(['<cls>']))  # shape: (1,1)
 
         output, decoder_h, attention_weights = model.get_layer('decoder').onestepdecoder(caption, enc_op, decoder_h)
-        attention_weights_list.append(attention_weights)
 
         st.write(f"Debug: Step {i}, Output shape: {output.shape}")
         st.write(f"Debug: Step {i}, Output sample: {output[0][:10]}")
 
-        predicted_id = tf.argmax(output, axis=-1).numpy()[0]
-        if isinstance(predicted_id, np.ndarray):
-            predicted_id = predicted_id[0]
+        max_prob = tf.argmax(output, axis=-1)  # tf.Tensor of shape = (1,1)
+        predicted_id = tf.squeeze(max_prob).numpy()
 
         st.write(
             f"Debug: Step {i}, Predicted ID: {predicted_id}, Word: {tokenizer.index_word.get(predicted_id, '<UNK>')}")
 
+        if predicted_id == last_predicted_id:
+            repeat_count += 1
+        else:
+            repeat_count = 0
+        last_predicted_id = predicted_id
+
+        st.write(f"Debug: Repeat count: {repeat_count}")
+
+        if repeat_count >= max_repeat:
+            st.write(f"Debug: Breaking loop due to excessive repetition")
+            break
+
+        caption = np.array([[predicted_id]])  # will be sent to onestepdecoder for next iteration
+
         if predicted_id == tokenizer.word_index.get('<end>', 1):
             st.write(f"Debug: End token encountered, breaking loop")
             break
-        if len(predicted_caption) >= max_pad:
+        else:
+            a.append(predicted_id)
+
+        if len(a) >= max_pad:
             st.write(f"Debug: Max length reached, breaking loop")
             break
 
-        predicted_caption.append(predicted_id)
-        caption = np.array([[predicted_id]])
-
-    predicted_text = tokenizer.sequences_to_texts([predicted_caption])[0]
+    predicted_text = tokenizer.sequences_to_texts([a])[0]
     st.write(f"Debug: Final predicted text: {predicted_text}")
-    return predicted_text, attention_weights_list
+    return predicted_text, attention_weights
+
+
 
 
 def visualize_attention(image, attention_weights, generated_text):
@@ -547,7 +577,7 @@ def predict_on_upload(image_1, image_2, model_tokenizer):
         st.image([image_1, image_2], width=300)
 
         st.write("Debug: Starting prediction")
-        predicted_text, attention_weights_list = greedy_search_predict(image_1, image_2, model, tokenizer)
+        predicted_text, attention_weights = greedy_search_predict(image_1, image_2, model, tokenizer)
         st.write("Debug: Prediction completed")
 
         st.markdown("### **Impression:**")
