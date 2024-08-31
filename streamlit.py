@@ -348,30 +348,37 @@ def process_uploaded_image(uploaded_file):
 
 
 # Image Processing
-def preprocess_image(image):
-    image = tf.image.resize(image, (224, 224))
+def preprocess_image(image, input_size=(224, 224)):
+    image = cv2.resize(image, input_size, interpolation=cv2.INTER_NEAREST)
     image = tf.cast(image, tf.float32) / 255.0
     image = tf.expand_dims(image, axis=0)  # Add batch dimension
     return image
 
-
+import cv2
 # Prediction Function
-def greedy_search_predict(image1, image2, model, tokenizer):
-    # Ensure images are in RGB format with 3 channels
-    image1 = Image.fromarray(image1).convert('RGB')
-    image2 = Image.fromarray(image2).convert('RGB')
+def greedy_search_predict(image1, image2, model, tokenizer, input_size=(224, 224)):
+    """
+    Given two x-ray images, predicts the impression part of the x-ray using a greedy search algorithm
+    """
+    # Preprocess images
+    def preprocess(image):
+        image = cv2.resize(image, input_size, interpolation=cv2.INTER_NEAREST)
+        image = np.repeat(image[..., np.newaxis], 3, -1)  # Convert grayscale to RGB
+        image = tf.cast(image, tf.float32) / 255.0
+        image = tf.expand_dims(image, axis=0)
+        return image
 
-    # Convert to numpy arrays and preprocess
-    image1 = np.array(image1)
-    image2 = np.array(image2)
-    image1 = preprocess_image(image1)
-    image2 = preprocess_image(image2)
+    image1 = preprocess(image1)
+    image2 = preprocess(image2)
+
+    st.write(f"Debug: Preprocessed Image 1 shape: {image1.shape}")
+    st.write(f"Debug: Preprocessed Image 2 shape: {image2.shape}")
 
     # Generate encoder outputs
-    enc_op1 = model.get_layer('image_encoder')(image1)
-    enc_op2 = model.get_layer('image_encoder')(image2)
-    image1_encoded = model.get_layer('bkdense')(enc_op1)
-    image2_encoded = model.get_layer('bkdense')(enc_op2)
+    image1_encoded = model.get_layer('image_encoder')(image1)
+    image2_encoded = model.get_layer('image_encoder')(image2)
+    image1_encoded = model.get_layer('bkdense')(image1_encoded)
+    image2_encoded = model.get_layer('bkdense')(image2_encoded)
 
     concat = model.get_layer('concatenate')([image1_encoded, image2_encoded])
     enc_op = model.get_layer('encoder_batch_norm')(concat)
@@ -380,6 +387,7 @@ def greedy_search_predict(image1, image2, model, tokenizer):
     decoder_h = tf.zeros_like(enc_op[:, 0])
     predicted_caption = []
     attention_weights_list = []
+    max_pad = 29
 
     caption = np.array(tokenizer.texts_to_sequences(['<cls>']))
 
@@ -390,14 +398,11 @@ def greedy_search_predict(image1, image2, model, tokenizer):
         attention_weights_list.append(attention_weights)
 
         st.write(f"Debug: Step {i}, Output shape: {output.shape}")
+        st.write(f"Debug: Step {i}, Output sample: {output[0][:10]}")  # Print first 10 values of output
 
-        if len(output.shape) == 3:
-            predicted_id = tf.argmax(output, axis=-1).numpy()[0][0]
-        elif len(output.shape) == 2:
-            predicted_id = tf.argmax(output, axis=-1).numpy()[0]
-        else:
-            st.write(f"Debug: Unexpected output shape: {output.shape}")
-            break
+        predicted_id = tf.argmax(output, axis=-1).numpy()[0]
+        if isinstance(predicted_id, np.ndarray):
+            predicted_id = predicted_id[0]
 
         st.write(f"Debug: Step {i}, Predicted ID: {predicted_id}, Current caption length: {len(predicted_caption)}")
 
@@ -497,14 +502,18 @@ def explain_medical_terms(text):
 def predict_on_upload(image_1, image_2, model_tokenizer):
     model, tokenizer = model_tokenizer
     if image_1 is not None:
-        st.write("Debug: Image 1 shape:", image_1.shape)
         image_1 = np.array(Image.open(image_1).convert("L"))  # Convert to grayscale
-        st.write("Debug: Processed Image 1 shape:", image_1.shape)
+        st.write("Debug: Image 1 shape:", image_1.shape)
+        st.write("Debug: Image 1 dtype:", image_1.dtype)
+        st.write("Debug: Image 1 min-max:", np.min(image_1), np.max(image_1))
+
         if image_2 is None:
             image_2 = image_1
         else:
             image_2 = np.array(Image.open(image_2).convert("L"))  # Convert to grayscale
-        st.write("Debug: Image 2 shape:", image_2.shape)
+            st.write("Debug: Image 2 shape:", image_2.shape)
+            st.write("Debug: Image 2 dtype:", image_2.dtype)
+            st.write("Debug: Image 2 min-max:", np.min(image_2), np.max(image_2))
 
         st.image([image_1, image_2], width=300)
 
@@ -514,6 +523,7 @@ def predict_on_upload(image_1, image_2, model_tokenizer):
 
         st.markdown("### **Impression:**")
         st.write(predicted_text)
+
 
         st.markdown("### Attention Visualization")
         st.write("The heatmap below shows which parts of the X-ray the model focused on while generating the report.")
