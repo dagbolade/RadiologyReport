@@ -305,7 +305,9 @@ def load_model_and_tokenizer():
 
         # Print model summary
         st.write("Model Summary:")
-        model.summary(print_fn=lambda x: st.text(x))
+        string_io = io.StringIO()
+        model.summary(print_fn=lambda x: string_io.write(x + '\n'))
+        st.text(string_io.getvalue())
 
         st.success("Proceed to the next step.")
 
