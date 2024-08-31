@@ -270,7 +270,7 @@ def load_model_and_tokenizer():
         with open(tokenizer_path, 'rb') as handle:
             tokenizer = pickle.load(handle)
         st.success("Tokenizer loaded successfully!")
-        vocab_size = len(tokenizer.word_index) + 1
+        vocab_size = len(tokenizer.word_index)
         st.write(f"Tokenizer vocabulary size: {vocab_size}")
     except Exception as e:
         st.error(f"Error loading tokenizer: {str(e)}")
