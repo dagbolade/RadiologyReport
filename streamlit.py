@@ -403,12 +403,16 @@ def greedy_search_predict(image1, image2, model, tokenizer, input_size=(224, 224
     enc_op = model.get_layer('encoder_batch_norm')(concat)
     enc_op = model.get_layer('encoder_dropout')(enc_op)
 
+    st.write(f"Debug: Starting prediction process")
+    st.write(f"Debug: Encoder output shape: {enc_op.shape}")
+
     decoder_h = tf.zeros_like(enc_op[:, 0])
     predicted_caption = []
     attention_weights_list = []
     max_pad = 29
 
     caption = np.array(tokenizer.texts_to_sequences(['<cls>']))
+    st.write(f"Debug: Initial caption token: {caption}")
 
     for i in range(max_pad):
         caption = tf.cast(caption, dtype=tf.float32)
@@ -417,16 +421,20 @@ def greedy_search_predict(image1, image2, model, tokenizer, input_size=(224, 224
         attention_weights_list.append(attention_weights)
 
         st.write(f"Debug: Step {i}, Output shape: {output.shape}")
-        st.write(f"Debug: Step {i}, Output sample: {output[0][:10]}")  # Print first 10 values of output
+        st.write(f"Debug: Step {i}, Output sample: {output[0][:10]}")
 
         predicted_id = tf.argmax(output, axis=-1).numpy()[0]
         if isinstance(predicted_id, np.ndarray):
             predicted_id = predicted_id[0]
 
-        st.write(f"Debug: Step {i}, Predicted ID: {predicted_id}, Current caption length: {len(predicted_caption)}")
+        st.write(
+            f"Debug: Step {i}, Predicted ID: {predicted_id}, Word: {tokenizer.index_word.get(predicted_id, '<UNK>')}")
 
-        if predicted_id == tokenizer.word_index.get('<end>', 1) or len(predicted_caption) >= max_pad:
-            st.write(f"Debug: Breaking loop at step {i}")
+        if predicted_id == tokenizer.word_index.get('<end>', 1):
+            st.write(f"Debug: End token encountered, breaking loop")
+            break
+        if len(predicted_caption) >= max_pad:
+            st.write(f"Debug: Max length reached, breaking loop")
             break
 
         predicted_caption.append(predicted_id)
