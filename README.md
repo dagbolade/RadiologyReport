@@ -26,6 +26,15 @@ The model was trained on a publicly available dataset from Indiana University, c
 - Provides visualization tools including attention maps and saliency maps
 - Offers a user-friendly interface via a Streamlit web application
 
+## Deployed Web Application
+
+Deployed the application on aws ecs using docker container and can be accessed via the link below:
+
+[Automated Radiology Report Generation](http://radiology-report-generation.duckdns.org:8501/)
+
+
+
+
 ## Model Performance
 
 The CheXNet Attention model with greedy search decoding achieved the following BLEU scores:
@@ -60,7 +69,7 @@ pip install -r requirements.txt
 3. Run the Streamlit application:
 
 ```bash
-streamlit run app.py
+streamlit run app.py or streamlit run streamlit.py
 ```
 ## Usage
 
@@ -69,3 +78,25 @@ streamlit run app.py
 3. The system will generate an impression section of the radiology report.
 4. View the generated report along with attention visualizations.
  5. Download the report as a pdf file.
+
+## Docker
+
+To run the application using Docker, follow these steps:
+
+1. Build the Docker image:
+
+```bash
+docker build -t radiology-report .
+```
+
+2. Run the Docker container:
+
+```bash
+docker run -p 8501:8501 radiology-report
+```
+
+3. Access the application at `http://localhost:8501` in your web browser.
+4. Upload chest X-ray images and generate radiology reports.
+
+
+
