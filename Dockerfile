@@ -4,7 +4,7 @@ FROM python:3.11.7
 # Set the working directory in the container
 WORKDIR /app
 
-# Copy all the files from your local machine to the container
+# Copy all the files from local machine to the container
 COPY . /app
 
 # Install necessary system dependencies
