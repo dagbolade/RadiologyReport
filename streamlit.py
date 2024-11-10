@@ -886,109 +886,222 @@ def delete_report(index):
     st.success("Report deleted successfully!")
 
 
-def add_severity_scoring(impression_text, attention_weights):
-    """Add AI-assisted severity scoring with improved medical term weighting"""
+def create_medical_severity_system():
+    """Create comprehensive medical term severity scoring system"""
 
-    def calculate_severity_score(text, weights):
-        # Enhanced severity keywords with more medical conditions and better weights
-        severity_keywords = {
-            # Critical findings
-            'cardiomegaly': 6.0,  # Enlarged heart
-            'edema': 5.0,  # Fluid buildup
-            'effusion': 5.0,  # Fluid collection
-            'pneumothorax': 8.0,  # Collapsed lung
-            'consolidation': 6.0,  # Dense lung opacity
-            'mass': 7.0,  # Potential tumor
+    severity_terms = {
+        # CRITICAL CONDITIONS (Score Range: 7-10)
+        "pneumothorax": {
+            "weight": 8.5,
+            "category": "critical",
+            "description": "Collapsed lung",
+            "urgency": "immediate"
+        },
+        "tuberculosis": {
+            "weight": 7.5,
+            "category": "critical",
+            "description": "Infectious disease primarily affecting the lungs",
+            "urgency": "immediate"
+        },
 
-            # Descriptive severity terms
-            'severe': 5.0,
-            'moderate': 3.0,
-            'mild': 2.0,  # Increased from 1.0
-            'minimal': 1.0,
+        # SEVERE CONDITIONS (Score Range: 5-7)
+        "pneumonia": {
+            "weight": 6.0,
+            "category": "severe",
+            "description": "Infection that inflames air sacs in the lungs",
+            "urgency": "urgent"
+        },
+        "cardiomegaly": {
+            "weight": 5.5,
+            "category": "severe",
+            "description": "Enlarged heart",
+            "urgency": "urgent"
+        },
+        "effusion": {
+            "weight": 5.5,
+            "category": "severe",
+            "description": "Fluid accumulation",
+            "urgency": "urgent"
+        },
+        "edema": {
+            "weight": 5.0,
+            "category": "severe",
+            "description": "Swelling caused by excess fluid",
+            "urgency": "urgent"
+        },
 
-            # Additional conditions
-            'interstitial': 4.0,  # Added weight for interstitial findings
-            'diffuse': 3.0,  # Added weight for widespread findings
-            'opacity': 2.5,
-            'opacities': 2.5,
-            'pulmonary': 2.0,
+        # MODERATE CONDITIONS (Score Range: 3-5)
+        "consolidation": {
+            "weight": 4.5,
+            "category": "moderate",
+            "description": "Lung tissue filled with liquid",
+            "urgency": "monitor"
+        },
+        "emphysema": {
+            "weight": 4.0,
+            "category": "moderate",
+            "description": "Lung condition causing shortness of breath",
+            "urgency": "monitor"
+        },
+        "nodule": {
+            "weight": 4.0,
+            "category": "moderate",
+            "description": "Small, round growth or lump",
+            "urgency": "monitor"
+        },
+        "fibrosis": {
+            "weight": 4.0,
+            "category": "moderate",
+            "description": "Thickening and scarring of connective tissue",
+            "urgency": "monitor"
+        },
+        "atelectasis": {
+            "weight": 3.5,
+            "category": "moderate",
+            "description": "Collapsed or closed air sacs in the lungs",
+            "urgency": "monitor"
+        },
 
-            # Normal/Negative terms
-            'normal': 0,
-            'stable': 0.5,
-            'unchanged': 0.5,
-            'clear': 0
+        # MILD CONDITIONS (Score Range: 1-3)
+        "opacity": {
+            "weight": 2.5,
+            "category": "mild",
+            "description": "Area of increased density on X-ray",
+            "urgency": "routine"
+        },
+        "calcification": {
+            "weight": 2.0,
+            "category": "mild",
+            "description": "Accumulation of calcium in soft tissue",
+            "urgency": "routine"
+        },
+        "granuloma": {
+            "weight": 2.0,
+            "category": "mild",
+            "description": "Small area of inflammation in tissue",
+            "urgency": "routine"
+        },
+
+        # DESCRIPTIVE TERMS (Modifiers that adjust base scores)
+        "bilateral": {
+            "weight": 1.5,
+            "category": "modifier",
+            "description": "Affecting both sides",
+            "modifier_type": "multiply"
+        },
+        "interstitial": {
+            "weight": 1.3,
+            "category": "modifier",
+            "description": "Relating to the tissue and space around the air sacs",
+            "modifier_type": "multiply"
+        },
+        "diffuse": {
+            "weight": 1.4,
+            "category": "modifier",
+            "description": "Spread throughout",
+            "modifier_type": "multiply"
+        },
+
+        # ANATOMICAL LOCATIONS (Minor score adjustments)
+        "apical": {
+            "weight": 0.2,
+            "category": "location",
+            "description": "Relating to the top of the lung",
+            "modifier_type": "add"
+        },
+        "basal": {
+            "weight": 0.2,
+            "category": "location",
+            "description": "Relating to the bottom of the lung",
+            "modifier_type": "add"
+        },
+        "hilar": {
+            "weight": 0.3,
+            "category": "location",
+            "description": "Relating to the area where vessels and airways enter",
+            "modifier_type": "add"
+        }
+    }
+
+    return severity_terms
+
+
+def calculate_severity(impression_text, severity_terms):
+    """Calculate severity score based on findings"""
+    words = impression_text.lower().split()
+    base_score = 0
+    modifiers = 1.0
+    location_additions = 0
+
+    # First pass: find base conditions
+    for word in words:
+        if word in severity_terms:
+            term = severity_terms[word]
+            if term["category"] in ["critical", "severe", "moderate", "mild"]:
+                base_score = max(base_score, term["weight"])
+
+    # Second pass: apply modifiers
+    for word in words:
+        if word in severity_terms:
+            term = severity_terms[word]
+            if term["category"] == "modifier":
+                modifiers *= term["weight"]
+            elif term["category"] == "location":
+                location_additions += term["weight"]
+
+    # Calculate final score
+    final_score = (base_score * modifiers) + location_additions
+
+    # Ensure score is between 0 and 10
+    final_score = min(10.0, max(0.0, final_score))
+
+    return final_score
+
+
+def get_recommendation(score):
+    """Get recommendation based on severity score"""
+    if score >= 7.0:
+        return {
+            "urgency": "IMMEDIATE ATTENTION REQUIRED",
+            "followup": "Emergency consultation recommended",
+            "monitoring": "Continuous monitoring needed"
+        }
+    elif score >= 5.0:
+        return {
+            "urgency": "URGENT ATTENTION NEEDED",
+            "followup": "Follow-up within 24-48 hours",
+            "monitoring": "Regular monitoring required"
+        }
+    elif score >= 3.0:
+        return {
+            "urgency": "PROMPT FOLLOW-UP",
+            "followup": "Follow-up within 1 week",
+            "monitoring": "Regular monitoring advised"
+        }
+    else:
+        return {
+            "urgency": "ROUTINE",
+            "followup": "Routine follow-up (3-6 months)",
+            "monitoring": "Monitor for changes"
         }
 
-        # Calculate base score from text with compound conditions
-        words = text.lower().split()
-        base_score = 0
 
-        # Check for compound conditions (e.g., "mild edema" should be weighted differently than just "edema")
-        for i in range(len(words) - 1):
-            compound = f"{words[i]} {words[i + 1]}"
-            if words[i] in ['mild', 'moderate', 'severe']:
-                if words[i + 1] in severity_keywords:
-                    # Adjust score based on severity modifier
-                    modifier = 0.5 if words[i] == 'mild' else 1.0 if words[i] == 'moderate' else 1.5
-                    base_score += severity_keywords[words[i + 1]] * modifier
-            else:
-                base_score += severity_keywords.get(words[i], 0)
-
-        # Add last word if it's in keywords
-        base_score += severity_keywords.get(words[-1], 0)
-
-        # Normalize base score
-        base_score = min(10.0, base_score)
-
-        # Calculate attention-based score
-        attention_score = float(np.mean(weights)) * 5 if isinstance(weights, (list, np.ndarray)) else 0
-
-        # Combine scores with weighted average (70% findings, 30% attention)
-        final_score = (base_score * 0.7 + attention_score * 0.3)
-
-        # Ensure minimum score of 2.0 if any findings are present
-        if base_score > 0:
-            final_score = max(2.0, final_score)
-
-        return min(10.0, final_score)
-
-    score = calculate_severity_score(impression_text, attention_weights)
+def add_severity_scoring(impression_text, attention_weights):
+    severity_terms = create_medical_severity_system()
+    score = calculate_severity(impression_text, severity_terms)
+    recommendations = get_recommendation(score)
 
     st.markdown("### 📊 Severity Assessment")
     cols = st.columns(2)
 
     with cols[0]:
         st.metric("Severity Score", f"{score:.1f}/10")
-
-        # Progress bar with proper float conversion
-        progress_value = float(score / 10.0)
-        st.progress(progress_value)
-        st.write(f"Severity Level: {score:.1f}/10")
+        st.progress(float(score / 10.0))
 
     with cols[1]:
-        st.markdown("#### Recommendations")
-        if score > 7:
-            st.error("🚨 Urgent attention recommended")
-            st.markdown("""
-            - Immediate clinical correlation required
-            - Consider emergency consultation
-            - Short-term follow-up imaging recommended
-            """)
-        elif score > 4:
-            st.warning("⚠️ Follow-up recommended")
-            st.markdown("""
-            - Clinical correlation advised
-            - Schedule follow-up within 1-2 weeks
-            - Monitor for symptom changes
-            """)
-        else:
-            st.success("✅ Routine monitoring advised")
-            st.markdown("""
-            - Follow-up as clinically indicated
-            - Regular screening schedule
-            - Report any new symptoms
-            """)
+        st.markdown(f"**{recommendations['urgency']}**")
+        st.write(f"• {recommendations['followup']}")
+        st.write(f"• {recommendations['monitoring']}")
 
     return score
 
