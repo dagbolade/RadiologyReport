@@ -3,7 +3,7 @@ import io
 from datetime import datetime
 import warnings
 import os
-
+import pandas as pd
 # Suppress TensorFlow warnings
 warnings.filterwarnings('ignore', category=Warning)
 
@@ -787,54 +787,6 @@ def export_to_pdf(patient_first_name, patient_last_name, impression, attention_i
     return buffer
 
 
-def add_image_controls():
-    """Add image enhancement controls in sidebar"""
-    controls = {}
-
-    with st.sidebar:
-        st.markdown("### 🎚️ Image Controls")
-
-        # Windowing controls
-        controls['window_center'] = st.slider(
-            "Window Center",
-            min_value=0,
-            max_value=4000,
-            value=2000,
-            help="Adjust the center of the window level"
-        )
-
-        controls['window_width'] = st.slider(
-            "Window Width",
-            min_value=1,
-            max_value=4000,
-            value=2000,
-            help="Adjust the width of the window level"
-        )
-
-        # Image enhancement
-        controls['brightness'] = st.slider(
-            "Brightness",
-            min_value=-50,
-            max_value=50,
-            value=0,
-            help="Adjust image brightness"
-        )
-
-        controls['contrast'] = st.slider(
-            "Contrast",
-            min_value=0.5,
-            max_value=2.0,
-            value=1.0,
-            step=0.1,
-            help="Adjust image contrast"
-        )
-
-        # Reset button
-        if st.button("Reset Controls"):
-            st.rerun()
-
-    return controls
-
 
 def add_dicom_metadata_display(dicom_file):
     """Display DICOM metadata in organized sections"""
@@ -856,23 +808,11 @@ def add_dicom_metadata_display(dicom_file):
                     if value != 'N/A':
                         st.write(f"**{key}:** {value}")
 
-                st.markdown("### 📸 Image Parameters")
-                image_params = {
-                    "Image Size": f"{ds.Rows}x{ds.Columns}",
-                    "Bits Allocated": getattr(ds, 'BitsAllocated', 'N/A'),
-                    "Bits Stored": getattr(ds, 'BitsStored', 'N/A'),
-                    "View Position": getattr(ds, 'ViewPosition', 'N/A')
-                }
-                for key, value in image_params.items():
-                    if value != 'N/A':
-                        st.write(f"**{key}:** {value}")
-
             with cols[1]:
                 st.markdown("### ⚙️ Technical Details")
                 tech_params = {
                     "KVP": getattr(ds, 'KVP', 'N/A'),
                     "Exposure": getattr(ds, 'Exposure', 'N/A'),
-                    "Exposure Time": getattr(ds, 'ExposureTime', 'N/A'),
                     "Manufacturer": getattr(ds, 'Manufacturer', 'N/A'),
                     "Institution": getattr(ds, 'InstitutionName', 'N/A')
                 }
@@ -880,46 +820,8 @@ def add_dicom_metadata_display(dicom_file):
                     if value != 'N/A':
                         st.write(f"**{key}:** {value}")
 
-                # Display window settings if available
-                if hasattr(ds, 'WindowCenter') and hasattr(ds, 'WindowWidth'):
-                    st.markdown("### 🪟 Window Settings")
-                    st.write(f"**Window Center:** {ds.WindowCenter}")
-                    st.write(f"**Window Width:** {ds.WindowWidth}")
-
     except Exception as e:
         st.error(f"Error reading DICOM metadata: {str(e)}")
-
-
-def export_to_dicom_sr(report_data):
-    """Create DICOM Structured Report"""
-    try:
-        # Create a basic DICOM SR
-        ds = Dataset()
-
-        # Add mandatory DICOM elements
-        ds.SOPClassUID = '1.2.840.10008.5.1.4.1.1.88.11'  # Basic Text SR
-        ds.SOPInstanceUID = pydicom.uid.generate_uid()
-        ds.StudyInstanceUID = pydicom.uid.generate_uid()
-        ds.SeriesInstanceUID = pydicom.uid.generate_uid()
-        ds.Modality = 'SR'
-        ds.ContentDate = datetime.now().strftime('%Y%m%d')
-        ds.ContentTime = datetime.now().strftime('%H%M%S')
-
-        # Add report content
-        ds.PatientName = report_data['patient_name']
-        ds.StudyDate = datetime.now().strftime('%Y%m%d')
-        ds.SeriesDescription = 'X-Ray Report'
-        ds.ReportText = report_data['impression']
-
-        # Convert to bytes
-        memory_dataset = BytesIO()
-        ds.save_as(memory_dataset)
-        memory_dataset.seek(0)
-        return memory_dataset.getvalue()
-
-    except Exception as e:
-        st.error(f"Error creating DICOM SR: {str(e)}")
-        return None
 
 
 def create_json_report(report_data):
@@ -932,7 +834,7 @@ def create_json_report(report_data):
         'report': {
             'impression': report_data['impression'],
             'key_findings': [word for word in report_data['impression'].split()
-                             if word.lower().strip('.,') in medical_terms]
+                           if word.lower().strip('.,') in medical_terms]
         },
         'metadata': {
             'generated_date': datetime.now().isoformat(),
@@ -946,7 +848,7 @@ def create_json_report(report_data):
 def add_export_options(report_data):
     """Add export options for the report"""
     st.markdown("### 📥 Export Options")
-    cols = st.columns(3)
+    cols = st.columns(2)  # Changed from 3 to 2 columns since we removed DICOM SR
 
     with cols[0]:
         # PDF Export
@@ -966,17 +868,6 @@ def add_export_options(report_data):
         )
 
     with cols[1]:
-        # DICOM SR Export
-        sr_data = export_to_dicom_sr(report_data)
-        if sr_data:
-            st.download_button(
-                label="🏥 Download DICOM SR",
-                data=sr_data,
-                file_name=f"report_{datetime.now().strftime('%Y%m%d_%H%M')}.dcm",
-                mime="application/dicom"
-            )
-
-    with cols[2]:
         # JSON Export
         json_data = create_json_report(report_data)
         st.download_button(
@@ -985,7 +876,6 @@ def add_export_options(report_data):
             file_name=f"report_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
             mime="application/json"
         )
-
 def clear_history():
     st.session_state.report_history = []
     st.success("Report history cleared!")
@@ -996,6 +886,142 @@ def delete_report(index):
     st.success("Report deleted successfully!")
 
 
+def add_severity_scoring(impression_text, attention_weights):
+    """Add AI-assisted severity scoring with improved medical term weighting"""
+
+    def calculate_severity_score(text, weights):
+        # Enhanced severity keywords with more medical conditions and better weights
+        severity_keywords = {
+            # Critical findings
+            'cardiomegaly': 6.0,  # Enlarged heart
+            'edema': 5.0,  # Fluid buildup
+            'effusion': 5.0,  # Fluid collection
+            'pneumothorax': 8.0,  # Collapsed lung
+            'consolidation': 6.0,  # Dense lung opacity
+            'mass': 7.0,  # Potential tumor
+
+            # Descriptive severity terms
+            'severe': 5.0,
+            'moderate': 3.0,
+            'mild': 2.0,  # Increased from 1.0
+            'minimal': 1.0,
+
+            # Additional conditions
+            'interstitial': 4.0,  # Added weight for interstitial findings
+            'diffuse': 3.0,  # Added weight for widespread findings
+            'opacity': 2.5,
+            'opacities': 2.5,
+            'pulmonary': 2.0,
+
+            # Normal/Negative terms
+            'normal': 0,
+            'stable': 0.5,
+            'unchanged': 0.5,
+            'clear': 0
+        }
+
+        # Calculate base score from text with compound conditions
+        words = text.lower().split()
+        base_score = 0
+
+        # Check for compound conditions (e.g., "mild edema" should be weighted differently than just "edema")
+        for i in range(len(words) - 1):
+            compound = f"{words[i]} {words[i + 1]}"
+            if words[i] in ['mild', 'moderate', 'severe']:
+                if words[i + 1] in severity_keywords:
+                    # Adjust score based on severity modifier
+                    modifier = 0.5 if words[i] == 'mild' else 1.0 if words[i] == 'moderate' else 1.5
+                    base_score += severity_keywords[words[i + 1]] * modifier
+            else:
+                base_score += severity_keywords.get(words[i], 0)
+
+        # Add last word if it's in keywords
+        base_score += severity_keywords.get(words[-1], 0)
+
+        # Normalize base score
+        base_score = min(10.0, base_score)
+
+        # Calculate attention-based score
+        attention_score = float(np.mean(weights)) * 5 if isinstance(weights, (list, np.ndarray)) else 0
+
+        # Combine scores with weighted average (70% findings, 30% attention)
+        final_score = (base_score * 0.7 + attention_score * 0.3)
+
+        # Ensure minimum score of 2.0 if any findings are present
+        if base_score > 0:
+            final_score = max(2.0, final_score)
+
+        return min(10.0, final_score)
+
+    score = calculate_severity_score(impression_text, attention_weights)
+
+    st.markdown("### 📊 Severity Assessment")
+    cols = st.columns(2)
+
+    with cols[0]:
+        st.metric("Severity Score", f"{score:.1f}/10")
+
+        # Progress bar with proper float conversion
+        progress_value = float(score / 10.0)
+        st.progress(progress_value)
+        st.write(f"Severity Level: {score:.1f}/10")
+
+    with cols[1]:
+        st.markdown("#### Recommendations")
+        if score > 7:
+            st.error("🚨 Urgent attention recommended")
+            st.markdown("""
+            - Immediate clinical correlation required
+            - Consider emergency consultation
+            - Short-term follow-up imaging recommended
+            """)
+        elif score > 4:
+            st.warning("⚠️ Follow-up recommended")
+            st.markdown("""
+            - Clinical correlation advised
+            - Schedule follow-up within 1-2 weeks
+            - Monitor for symptom changes
+            """)
+        else:
+            st.success("✅ Routine monitoring advised")
+            st.markdown("""
+            - Follow-up as clinically indicated
+            - Regular screening schedule
+            - Report any new symptoms
+            """)
+
+    return score
+
+def add_follow_up_recommendations(severity_score):
+    """Add follow-up recommendations based on severity"""
+    st.markdown("### 📋 Follow-up Recommendations")
+
+    timeframes = {
+        (7, 10): "Immediate",
+        (4, 7): "Within 1 week",
+        (0, 4): "Routine (3-6 months)"
+    }
+
+    for (lower, upper), timeframe in timeframes.items():
+        if lower <= severity_score <= upper:
+            st.info(f"Recommended follow-up: **{timeframe}**")
+            break
+
+    with st.expander("Detailed Recommendations"):
+        st.markdown("""
+        #### Follow-up Guidelines:
+        1. **Clinical Correlation**
+           - Compare with previous imaging if available
+           - Consider patient symptoms and history
+
+        2. **Documentation**
+           - Save this report for future reference
+           - Track changes over time
+
+        3. **Additional Testing**
+           - Consider additional views if needed
+           - Follow standard imaging protocols
+        """)
 # Main App Function
 def main():
     load_and_display_logo()
@@ -1021,6 +1047,105 @@ def main():
     # Create tabs
     tab1, tab2, tab3, tab4 = st.tabs(["About", "How it works", "Upload X-rays", "Report History"])
 
+    with tab1:
+        st.header("About")
+        st.write("""
+        Welcome to the Chest X-ray Report Generator!
+
+        This advanced application uses state-of-the-art deep learning models to analyze chest X-rays and generate medical impressions. 
+        The system employs three sophisticated models:
+
+        1. **Attention Mechanism With CheXNet** (Primary Model)
+        2. **InceptionV3**
+        3. **EfficientNetB0**
+
+        After extensive testing and validation, the Attention Mechanism with CheXNet achieved superior results and was selected as the primary model for this application.
+
+        Key Features:
+        - Support for both standard image formats (PNG, JPEG) and DICOM medical imaging format
+        - Multi-language report generation
+        - Interactive attention visualization
+        - Comprehensive medical term explanations
+        - Multiple export options (PDF and JSON)
+        - Report history tracking
+
+        📝 **Important Note:** This tool is designed for educational and research purposes only. It should not be used as a replacement for professional medical diagnosis. Always consult with qualified healthcare professionals for medical advice.
+
+        💡 **Publication:** This work is part of ongoing research in medical image analysis and natural language processing. For technical details and methodology, please refer to the associated documentation.
+        """)
+
+        st.markdown("### Model Information")
+        st.markdown("""
+        - **Primary Model:** Attention With BruceChou Pretrained CheXNet Model
+        - **Training Dataset:** 7,471 chest X-rays images and 3,955 corresponding reports
+        - **Image Processing:** Support for standard formats and DICOM
+        - **Languages Supported:** Multiple languages through integrated translation
+        """)
+
+    with tab2:
+        st.header("How it works")
+
+        st.markdown("### Step 1: Patient Information")
+        st.write("""
+        • Enter the patient's first and last name
+        • Select your preferred language for the report from the sidebar
+        """)
+
+        st.markdown("### Step 2: Upload X-rays")
+        st.write("""
+        • Upload one or two chest X-ray images
+        • Supported formats: PNG, JPG, JPEG, DICOM
+        • First image should be frontal view
+        • Second image (optional) can be lateral view
+        • Maximum file size: 200MB per image
+        """)
+
+        st.markdown("### Step 3: Analysis")
+        st.write("""
+        • The AI model processes the X-rays using:
+          - CheXNet for feature extraction
+          - Attention mechanism for focusing on relevant areas
+          - Natural Language Processing for report generation
+        • Generates comprehensive impression
+        • Creates attention visualization heatmap
+        """)
+
+        st.markdown("### Step 4: Review and Export")
+        st.write("""
+        • Review the generated impression
+        • Hover over medical terms for explanations
+        • View attention heatmap showing areas of focus
+        • Export options:
+          - PDF report with all details
+          - JSON format for data integration
+        • Access historical reports in the Report History tab
+        """)
+
+        st.markdown("### Technical Process")
+        st.write("""
+        1. **Image Processing:**
+           - Preprocessing of X-ray images
+           - Normalization and standardization
+           - Format conversion when needed (DICOM to standard format)
+
+        2. **AI Analysis:**
+           - Feature extraction using CheXNet
+           - Attention mechanism application
+           - Natural language generation
+
+        3. **Report Generation:**
+           - Structured impression generation
+           - Medical term integration
+           - Multi-language support
+
+        4. **Visualization:**
+           - Attention heatmap generation
+           - Interactive visualization
+           - Medical term highlighting
+        """)
+
+        st.info("💡 The system continuously maintains patient privacy and data security throughout the process.")
+
     with tab3:
         st.info(
             f"Generating report for patient: {patient_first_name} {patient_last_name}"
@@ -1036,8 +1161,7 @@ def main():
             "a frontal view and an optional lateral view of the chest from the same individual."
         )
 
-        # Add image enhancement controls in sidebar
-        image_controls = add_image_controls()
+
 
         col1, col2 = st.columns(2)
         with col1:
@@ -1089,6 +1213,12 @@ def main():
                         predicted_text = translate_text(predicted_text, selected_language)
 
                 st.subheader(f"Generated Impression for {patient_first_name} {patient_last_name}:")
+
+                # Add severity scoring
+                severity_score = add_severity_scoring(predicted_text, attention_weights_list)
+
+                # Add follow-up recommendations
+                add_follow_up_recommendations(severity_score)
 
                 # Display the impression with hover explanations
                 words = predicted_text.split()
