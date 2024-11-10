@@ -4,6 +4,8 @@ from datetime import datetime
 import warnings
 import os
 
+import cv2
+
 # Suppress TensorFlow warnings
 warnings.filterwarnings('ignore', category=Warning)
 

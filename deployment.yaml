@@ -1,0 +1,21 @@
+#apiVersion: apps/v1
+#kind: Deployment
+#metadata:
+#  name: radiology-report-deployment
+#spec:
+#  replicas: 3
+#  selector:
+#    matchLabels:
+#      app: radiology-report
+#  template:
+#    metadata:
+#      labels:
+#        app: radiology-report
+#    spec:
+#      containers:
+#      - name: radiology-report-container
+#        image: 975980398360.dkr.ecr.us-east-1.amazonaws.com/radiology-report:latest
+#        ports:
+#        - containerPort: 8501
+#      imagePullSecrets:
+#      - name: ecr-secret
