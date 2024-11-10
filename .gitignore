@@ -8,3 +8,37 @@ Radiography*.jpg
 # But don't ignore these specific .h5 files
 !Radiography/Attention_with_cheXNet_full_model1.h5
 !Radiography/Copy of Copy of brucechou1983_CheXNet_Keras_0.3.0_weights.h5
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# Site Packages
+**/site-packages/
+venv/Lib/site-packages/
+
+# Cache files
+__pycache__/
+*.py[cod]
+*.so
+
+# IDE
+.idea/
+.vscode/
+
+# Build files
+*.doxyfile
+*.f2py_f2cmap
+.gitkeep
+00readme.txt
+*.chunk.js
+
+# Distribution
+dist/
+build/
+*.egg-info/
+
+# System
+.DS_Store
+Thumbs.db
