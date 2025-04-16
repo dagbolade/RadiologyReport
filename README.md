@@ -23,16 +23,9 @@ The model was trained on a publicly available dataset from Indiana University, c
 - Uses advanced CNN architectures (CheXNet, InceptionV3, EfficientNet) for feature extraction
 - Implements a global attention mechanism for focusing on relevant image areas
 - Generates coherent and clinically relevant radiology reports
-- Provides visualization tools including attention maps and saliency maps
+- Provides visualisation tools including attention maps and saliency maps
+- Includes Dicom format
 - Offers a user-friendly interface via a Streamlit web application
-
-## Deployed Web Application
-
-Deployed the application on aws ecs using docker container and can be accessed via the link below:
-
-[Automated Radiology Report Generation](http://radiology-report-generation.duckdns.org:8501/)
-
-
 
 
 ## Model Performance
