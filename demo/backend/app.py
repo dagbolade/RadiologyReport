@@ -56,7 +56,11 @@ async def lifespan(app: FastAPI):
 
 # ─── App ─────────────────────────────────────────────────────────────────────
 
+# Local dev: demo/backend/app.py → up 2 → demo/frontend
+# Docker:    /app/app.py → up 1 → /app/frontend
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend")
+if not os.path.exists(FRONTEND_DIR):
+    FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend")
 
 app = FastAPI(
     title="Radiology Report Generator API",
