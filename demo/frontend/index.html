@@ -960,12 +960,18 @@ function displayResults(d) {
     const results = document.getElementById('results');
     const score = d.severity.score;
 
-    // Severity color
+    // Severity color — use backend level if available
     let col, level, levelBg;
-    if (score >= 7) { col = 'var(--red)'; level = 'Critical'; levelBg = 'var(--red-dim)'; }
+    const bLevel = (d.severity.level || '').toUpperCase();
+    if (bLevel === 'CRITICAL') { col = 'var(--red)'; level = 'Critical'; levelBg = 'var(--red-dim)'; }
+    else if (bLevel === 'URGENT') { col = 'var(--amber)'; level = 'Urgent'; levelBg = 'var(--amber-dim)'; }
+    else if (bLevel === 'MODERATE') { col = '#ca8a04'; level = 'Moderate'; levelBg = 'rgba(202,138,4,0.12)'; }
+    else if (bLevel === 'LOW') { col = 'var(--green)'; level = 'Low'; levelBg = 'var(--green-dim)'; }
+    else if (bLevel === 'NORMAL') { col = 'var(--green)'; level = 'Normal'; levelBg = 'var(--green-dim)'; }
+    else if (score >= 7) { col = 'var(--red)'; level = 'Critical'; levelBg = 'var(--red-dim)'; }
     else if (score >= 5) { col = 'var(--amber)'; level = 'Urgent'; levelBg = 'var(--amber-dim)'; }
     else if (score >= 3) { col = '#ca8a04'; level = 'Moderate'; levelBg = 'rgba(202,138,4,0.12)'; }
-    else { col = 'var(--green)'; level = 'Routine'; levelBg = 'var(--green-dim)'; }
+    else { col = 'var(--green)'; level = 'Normal'; levelBg = 'var(--green-dim)'; }
 
     document.getElementById('sevVal').textContent = score.toFixed(1);
     document.getElementById('sevVal').style.color = col;
@@ -1188,3 +1194,5 @@ setupZone('zone2', 'file2', 2);
 
 </body>
 </html>
+
+// ═════════════════════════════════════════════════════

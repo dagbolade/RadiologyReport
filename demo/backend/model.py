@@ -377,9 +377,15 @@ SEVERITY_TERMS = {
     "pneumothorax": 8.5, "tuberculosis": 7.5,
     "pneumonia": 6.0, "cardiomegaly": 5.5, "effusion": 5.5, "edema": 5.0,
     "consolidation": 4.5, "emphysema": 4.0, "nodule": 4.0, "fibrosis": 4.0,
-    "atelectasis": 3.5,
-    "opacity": 2.5, "calcification": 2.0, "granuloma": 2.0,
+    "atelectasis": 3.5, "infiltrate": 2.5, "infiltrates": 2.5,
+    "opacity": 2.5, "opacities": 2.5, "calcification": 2.0, "granuloma": 2.0,
 }
+
+# Modifiers that reduce severity when they appear near a finding
+NEGATION_WORDS = {"no", "without", "absent", "negative", "unremarkable", "resolved", "clear"}
+MILD_WORDS = {"mild", "minimal", "slight", "subtle", "tiny", "small", "minor"}
+STABLE_WORDS = {"stable", "unchanged", "chronic", "known", "previous", "old"}
+SEVERE_WORDS = {"severe", "large", "massive", "extensive", "significant", "marked", "acute", "worsening"}
 
 MEDICAL_TERMS = {
     "cardiopulmonary": "Relating to the heart and lungs",
@@ -389,12 +395,14 @@ MEDICAL_TERMS = {
     "atelectasis": "Collapsed or closed air sacs in the lungs",
     "cardiomegaly": "Enlarged heart",
     "opacity": "Area of increased density on X-ray",
+    "opacities": "Areas of increased density on X-ray",
     "edema": "Swelling caused by excess fluid",
     "emphysema": "Lung condition causing shortness of breath",
     "nodule": "Small, round growth or lump",
     "tuberculosis": "Infectious disease primarily affecting the lungs",
     "pleural": "Relating to the membrane covering the lungs",
     "infiltrate": "Substance abnormally accumulating in tissue",
+    "infiltrates": "Substances abnormally accumulating in tissue",
     "bronchial": "Relating to the airways in the lungs",
     "pulmonary": "Relating to the lungs",
     "vascular": "Relating to blood vessels",
@@ -413,39 +421,108 @@ MEDICAL_TERMS = {
 
 
 def compute_severity(report_text: str) -> dict:
-    """Compute severity score and recommendations from report text"""
-    words = report_text.lower().split()
-    max_score = 0.0
+    """
+    Compute severity score from report text with context awareness.
+    Handles negation (no, without), modifiers (mild, severe, stable),
+    and accumulates multiple findings.
+    """
+    text = report_text.lower()
+    words = text.split()
+    cleaned_words = [w.strip('.,;:()') for w in words]
 
-    for word in words:
-        clean = word.strip('.,;:')
-        if clean in SEVERITY_TERMS:
-            max_score = max(max_score, SEVERITY_TERMS[clean])
+    # ── Check for clearly normal reports first ──────────────────────────
+    normal_phrases = [
+        "no acute cardiopulmonary abnormality",
+        "no acute disease",
+        "no acute findings",
+        "within normal limits",
+        "lungs are clear",
+        "lungs appear clear",
+        "unremarkable",
+    ]
+    for phrase in normal_phrases:
+        if phrase in text:
+            # Still extract any mild findings for display
+            findings = [w for w in cleaned_words if w in MEDICAL_TERMS and w not in ("disease", "pulmonary", "vascular", "bilateral", "thoracic", "interstitial")]
+            findings = list(dict.fromkeys(findings))  # deduplicate preserving order
+            return {
+                "score": 1.0,
+                "urgency": "ROUTINE — NORMAL",
+                "followup": "No immediate follow-up needed",
+                "key_findings": findings if findings else ["normal"],
+                "findings_explained": {f: MEDICAL_TERMS[f] for f in findings} if findings else {"normal": "No abnormalities detected"},
+            }
 
-    score = min(10.0, max(0.0, max_score))
+    # ── Score each finding with context ─────────────────────────────────
+    finding_scores = []
 
+    for i, clean in enumerate(cleaned_words):
+        if clean not in SEVERITY_TERMS:
+            continue
+
+        base_score = SEVERITY_TERMS[clean]
+
+        # Look at surrounding words (window of 3 before, 2 after)
+        context_start = max(0, i - 3)
+        context_end = min(len(cleaned_words), i + 3)
+        context = set(cleaned_words[context_start:context_end])
+
+        # Apply modifiers
+        if context & NEGATION_WORDS:
+            base_score *= 0.1  # Negated finding: almost zero
+        elif context & STABLE_WORDS:
+            base_score *= 0.65  # Stable/chronic: reduced severity
+        elif context & MILD_WORDS:
+            base_score *= 0.7  # Mild: reduced
+        elif context & SEVERE_WORDS:
+            base_score *= 1.3  # Severe: increased
+
+        finding_scores.append((clean, round(base_score, 1)))
+
+    # ── Combine scores ──────────────────────────────────────────────────
+    if not finding_scores:
+        score = 1.0
+    else:
+        # Primary score = highest finding, secondary findings add a fraction
+        sorted_scores = sorted([s for _, s in finding_scores], reverse=True)
+        score = sorted_scores[0]
+        # Each additional finding adds 15% of its score (diminishing)
+        for extra in sorted_scores[1:]:
+            score += extra * 0.15
+        score = min(10.0, max(0.0, round(score, 1)))
+
+    # ── Urgency levels ──────────────────────────────────────────────────
     if score >= 7.0:
         urgency = "IMMEDIATE ATTENTION REQUIRED"
         followup = "Emergency consultation recommended"
+        level = "CRITICAL"
     elif score >= 5.0:
         urgency = "URGENT ATTENTION NEEDED"
         followup = "Follow-up within 24-48 hours"
+        level = "URGENT"
     elif score >= 3.0:
-        urgency = "PROMPT FOLLOW-UP"
-        followup = "Follow-up within 1 week"
+        urgency = "REVIEW RECOMMENDED"
+        followup = "Follow-up within 1-2 weeks"
+        level = "MODERATE"
+    elif score >= 1.5:
+        urgency = "MINOR FINDINGS"
+        followup = "Routine follow-up (1-3 months)"
+        level = "LOW"
     else:
         urgency = "ROUTINE"
-        followup = "Routine follow-up (3-6 months)"
+        followup = "Routine follow-up (6-12 months)"
+        level = "NORMAL"
 
-    # Extract key findings
+    # ── Extract key findings (skip generic terms) ───────────────────────
+    skip_terms = {"disease", "pulmonary", "vascular", "bilateral", "thoracic", "interstitial", "bronchial", "hilar", "mediastinal", "pleural"}
     findings = []
-    for word in words:
-        clean = word.strip('.,;:')
-        if clean in MEDICAL_TERMS and clean not in findings:
-            findings.append(clean)
+    for w in cleaned_words:
+        if w in MEDICAL_TERMS and w not in findings and w not in skip_terms:
+            findings.append(w)
 
     return {
-        "score": round(score, 1),
+        "score": score,
+        "level": level,
         "urgency": urgency,
         "followup": followup,
         "key_findings": findings,

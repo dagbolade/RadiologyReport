@@ -84,4 +84,7 @@ backend/venv_local/
 
 # Large data files
 Radiography/glove.6B.300d.txt
+
+# Ignore pickle except tokenizer
 *.pickle
+!Radiography/tokenizer/tokenizer.pickle
