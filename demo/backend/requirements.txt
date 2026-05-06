@@ -1,3 +1,8 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:1589a97c6d264cb448f799839ad16ac1c881d88744dd7eca344cb819f24c0bf6
-size 161
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+tensorflow-cpu==2.15.0
+numpy==1.26.2
+Pillow==10.1.0
+matplotlib==3.8.2
+python-multipart==0.0.6
+deep-translator==1.11.4

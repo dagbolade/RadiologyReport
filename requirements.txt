@@ -1,3 +1,15 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:56fc74ead246c8cbb1b266e2152b5b7de831a976b625d0ff62c7321bacdf8438
-size 240
+numpy==1.26.2
+preprocessing==0.1.13
+tensorflow==2.15.0
+streamlit>=1.31.0
+keras==2.15.0
+Pillow
+opencv-python
+googletrans==3.1.0a0
+pydicom
+matplotlib
+pandas
+reportlab
+scikit-learn
+joblib
+python-dotenv # for environment variables
