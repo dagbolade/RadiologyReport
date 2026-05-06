@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RadReport AI — Chest X-ray Report Generator</title>
+    <style>
+        /* ═══════════════════════════════════════════════════════
+           RESET & VARIABLES
+           ═══════════════════════════════════════════════════════ */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg-0: #06070b;
+            --bg-1: #0c0d14;
+            --bg-2: #13141e;
+            --bg-3: #1a1c2a;
+            --bg-4: #222436;
+            --border: #2a2d42;
+            --border-subtle: #1e2035;
+            --text-0: #eaeaf0;
+            --text-1: #b8b9cc;
+            --text-2: #7c7e96;
+            --text-3: #52546a;
+            --accent: #4f8ff7;
+            --accent-dim: rgba(79, 143, 247, 0.12);
+            --accent-glow: rgba(79, 143, 247, 0.25);
+            --green: #34d399;
+            --green-dim: rgba(52, 211, 153, 0.12);
+            --amber: #fbbf24;
+            --amber-dim: rgba(251, 191, 36, 0.12);
+            --red: #f87171;
+            --red-dim: rgba(248, 113, 113, 0.12);
+            --mono: 'SF Mono', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+            --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif;
+            --radius: 12px;
+            --radius-sm: 8px;
+            --radius-xs: 5px;
+            --shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+
+        body { font-family: var(--sans); background: var(--bg-0); color: var(--text-0); line-height: 1.6; }
+
+        /* ═══════════════════════════════════════════════════════
+           LAYOUT
+           ═══════════════════════════════════════════════════════ */
+        .shell { display: flex; min-height: 100vh; }
+
+        /* ─── Sidebar ──────────────────────────────────────── */
+        .sidebar {
+            width: 260px;
+            background: var(--bg-1);
+            border-right: 1px solid var(--border-subtle);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+            z-index: 100;
+        }
+
+        .sidebar-brand {
+            padding: 24px 20px 16px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .sidebar-brand h1 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .sidebar-brand h1 .icon { font-size: 1.3rem; }
+        .sidebar-brand p { font-size: 0.7rem; color: var(--text-3); margin-top: 4px; }
+
+        .sidebar-nav { padding: 12px 10px; flex: 1; }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-size: 0.85rem;
+            color: var(--text-2);
+            transition: all 0.15s;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+        }
+
+        .nav-item:hover { background: var(--bg-3); color: var(--text-0); }
+        .nav-item.active { background: var(--accent-dim); color: var(--accent); font-weight: 600; }
+        .nav-item .nav-icon { font-size: 1.05rem; width: 22px; text-align: center; }
+
+        .sidebar-status {
+            padding: 16px 20px;
+            border-top: 1px solid var(--border-subtle);
+            font-size: 0.75rem;
+        }
+
+        .status-dot {
+            display: inline-block;
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            margin-right: 6px;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.online { background: var(--green); }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+        /* ─── Main ─────────────────────────────────────────── */
+        .main { margin-left: 260px; flex: 1; min-height: 100vh; }
+
+        .topbar {
+            height: 56px;
+            background: var(--bg-1);
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 28px;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        .topbar-title { font-size: 0.9rem; font-weight: 600; color: var(--text-1); }
+
+        .topbar-actions { display: flex; align-items: center; gap: 12px; }
+
+        .lang-select {
+            background: var(--bg-3);
+            border: 1px solid var(--border);
+            color: var(--text-1);
+            padding: 6px 10px;
+            border-radius: var(--radius-xs);
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+
+        .content { padding: 28px; max-width: 1100px; }
+
+        /* ═══════════════════════════════════════════════════════
+           PAGES (show/hide)
+           ═══════════════════════════════════════════════════════ */
+        .page { display: none; }
+        .page.active { display: block; }
+
+        /* ═══════════════════════════════════════════════════════
+           CARDS
+           ═══════════════════════════════════════════════════════ */
+        .card {
+            background: var(--bg-2);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius);
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .card-header {
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .card-header h2 {
+            font-size: 0.78rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-2);
+        }
+
+        .card-body { padding: 20px; }
+
+        /* ═══════════════════════════════════════════════════════
+           FORMS
+           ═══════════════════════════════════════════════════════ */
+        .form-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 16px; }
+        .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px; }
+
+        .form-group label {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--text-2);
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 9px 12px;
+            background: var(--bg-0);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-xs);
+            color: var(--text-0);
+            font-size: 0.88rem;
+            font-family: var(--sans);
+            transition: border-color 0.15s;
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-dim);
+        }
+
+        .form-group input::placeholder { color: var(--text-3); }
+
+        /* ─── Upload zones ─────────────────────────────────── */
+        .upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+        .upload-zone {
+            border: 2px dashed var(--border);
+            border-radius: var(--radius);
+            padding: 28px 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            min-height: 170px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: var(--accent);
+            background: var(--accent-dim);
+        }
+
+        .upload-zone.has-image { border-style: solid; border-color: var(--green); padding: 8px; }
+        .upload-zone input[type="file"] { display: none; }
+        .upload-zone .uz-icon { font-size: 1.8rem; margin-bottom: 8px; opacity: 0.4; }
+        .upload-zone .uz-label { font-size: 0.85rem; font-weight: 500; color: var(--text-1); }
+        .upload-zone .uz-hint { font-size: 0.72rem; color: var(--text-3); margin-top: 4px; }
+        .upload-zone .preview { max-width: 100%; max-height: 150px; border-radius: var(--radius-xs); }
+        .upload-zone .fname { font-size: 0.72rem; color: var(--text-2); margin-top: 6px; font-family: var(--mono); }
+        .upload-zone .remove-btn {
+            position: absolute; top: 6px; right: 8px;
+            background: var(--bg-0); border: 1px solid var(--border);
+            color: var(--text-2); border-radius: 50%; width: 24px; height: 24px;
+            cursor: pointer; font-size: 0.7rem; display: flex; align-items: center; justify-content: center;
+        }
+
+        /* ─── Analyze button ───────────────────────────────── */
+        .btn-analyze {
+            width: 100%;
+            padding: 13px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 0.92rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+            margin-top: 8px;
+        }
+
+        .btn-analyze:hover:not(:disabled) { background: #3b7ae0; box-shadow: 0 0 24px var(--accent-glow); }
+        .btn-analyze:disabled { opacity: 0.35; cursor: not-allowed; }
+
+        /* ═══════════════════════════════════════════════════════
+           LOADING
+           ═══════════════════════════════════════════════════════ */
+        .loading-state { display:none; text-align:center; padding:48px 0; }
+        .loading-state.active { display:block; }
+
+        .spinner { width:42px;height:42px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 14px; }
+        @keyframes spin{to{transform:rotate(360deg)}}
+
+        .loading-state .ls-text { font-size:0.88rem; color:var(--text-2); }
+        .loading-state .ls-timer { font-family:var(--mono); font-size:1.6rem; color:var(--accent); margin-top:6px; }
+
+        .loading-state .ls-steps { margin-top: 20px; text-align: left; display: inline-block; }
+        .loading-state .ls-step {
+            font-size: 0.8rem; color: var(--text-3); padding: 4px 0;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .loading-state .ls-step.done { color: var(--green); }
+        .loading-state .ls-step.active { color: var(--accent); }
+
+        /* ═══════════════════════════════════════════════════════
+           RESULTS
+           ═══════════════════════════════════════════════════════ */
+        .results { display:none; }
+        .results.active { display:block; }
+
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .results-header h2 { font-size: 1rem; font-weight: 600; }
+
+        .results-actions { display: flex; gap: 8px; }
+
+        .btn-sm {
+            padding: 7px 14px;
+            border: 1px solid var(--border);
+            background: var(--bg-3);
+            color: var(--text-1);
+            border-radius: var(--radius-xs);
+            font-size: 0.78rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: flex; align-items: center; gap: 5px;
+        }
+
+        .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+
+        /* severity widget */
+        .severity-widget { display: flex; align-items: stretch; gap: 20px; }
+
+        .sev-score-box {
+            min-width: 110px; text-align: center;
+            display: flex; flex-direction: column; justify-content: center;
+        }
+
+        .sev-score-box .sev-val { font-size: 2.8rem; font-weight: 800; line-height: 1; }
+        .sev-score-box .sev-max { font-size: 0.75rem; color: var(--text-3); }
+        .sev-score-box .sev-level {
+            font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.06em; margin-top: 6px; padding: 3px 10px;
+            border-radius: 20px; display: inline-block;
+        }
+
+        .sev-details { flex: 1; }
+
+        .sev-bar { height: 6px; background: var(--bg-0); border-radius: 3px; overflow: hidden; margin-bottom: 16px; }
+        .sev-bar-fill { height: 100%; border-radius: 3px; transition: width 0.8s ease; }
+
+        .sev-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .sev-item .sev-dt { font-size: 0.68rem; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; }
+        .sev-item .sev-dd { font-size: 0.85rem; color: var(--text-0); font-weight: 500; margin-top: 2px; }
+
+        /* report text */
+        .report-text {
+            font-size: 1.05rem; line-height: 1.85; padding: 18px 20px;
+            background: var(--bg-0); border-radius: var(--radius-sm);
+            border-left: 3px solid var(--accent);
+        }
+
+        .med-term {
+            color: var(--accent); text-decoration: underline; text-decoration-style: dotted;
+            text-underline-offset: 3px; cursor: help; position: relative;
+        }
+
+        .med-term:hover::after {
+            content: attr(data-def);
+            position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%);
+            background: var(--bg-4); border: 1px solid var(--border); padding: 5px 10px;
+            border-radius: var(--radius-xs); font-size: 0.72rem; color: var(--text-1);
+            white-space: nowrap; z-index: 10; pointer-events: none; box-shadow: var(--shadow);
+        }
+
+        /* plain english */
+        .plain-english-box {
+            font-size: 0.95rem; line-height: 1.85; padding: 18px 20px;
+            background: linear-gradient(135deg, rgba(52, 211, 153, 0.06), rgba(79, 143, 247, 0.04));
+            border-radius: var(--radius-sm);
+            border-left: 3px solid var(--green);
+            color: var(--text-1);
+        }
+
+        /* findings */
+        .findings-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+        .ftag {
+            padding: 4px 14px; background: var(--accent-dim); border: 1px solid rgba(79,143,247,0.25);
+            border-radius: 20px; font-size: 0.78rem; color: var(--accent); cursor: help;
+        }
+
+        /* attention image */
+        .att-img { width: 100%; border-radius: var(--radius-sm); }
+
+        /* metadata grid */
+        .meta-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+        .meta-cell .mc-label { font-size: 0.68rem; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; }
+        .meta-cell .mc-val { font-size: 0.92rem; font-family: var(--mono); color: var(--text-0); margin-top: 2px; }
+
+        /* ═══════════════════════════════════════════════════════
+           HISTORY PAGE
+           ═══════════════════════════════════════════════════════ */
+        .history-empty { text-align: center; padding: 60px 20px; color: var(--text-3); }
+        .history-empty .he-icon { font-size: 2.5rem; margin-bottom: 10px; opacity: 0.3; }
+
+        .history-item {
+            background: var(--bg-2); border: 1px solid var(--border-subtle);
+            border-radius: var(--radius); padding: 16px 20px; margin-bottom: 12px;
+            cursor: pointer; transition: border-color 0.15s;
+        }
+        .history-item:hover { border-color: var(--accent); }
+
+        .hi-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .hi-patient { font-weight: 600; font-size: 0.9rem; }
+        .hi-time { font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); }
+        .hi-bottom { display: flex; gap: 16px; font-size: 0.8rem; color: var(--text-2); }
+        .hi-badge { padding: 2px 10px; border-radius: 12px; font-size: 0.72rem; font-weight: 600; }
+
+        /* ═══════════════════════════════════════════════════════
+           ABOUT PAGE
+           ═══════════════════════════════════════════════════════ */
+        .about-hero {
+            text-align: center; padding: 40px 20px;
+            background: linear-gradient(135deg, var(--accent-dim) 0%, transparent 60%);
+            border-radius: var(--radius); margin-bottom: 24px;
+        }
+        .about-hero h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: 8px; }
+        .about-hero p { color: var(--text-2); font-size: 0.9rem; max-width: 600px; margin: 0 auto; }
+
+        .about-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+        .about-stat { text-align: center; padding: 20px; }
+        .about-stat .as-val { font-size: 1.8rem; font-weight: 800; color: var(--accent); }
+        .about-stat .as-label { font-size: 0.75rem; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
+
+        .pub-item { padding: 12px 0; border-bottom: 1px solid var(--border-subtle); }
+        .pub-item:last-child { border-bottom: none; }
+        .pub-item .pub-title { font-weight: 600; font-size: 0.88rem; }
+        .pub-item .pub-detail { font-size: 0.78rem; color: var(--text-2); margin-top: 2px; }
+
+        .award-badge {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: var(--amber-dim); border: 1px solid rgba(251,191,36,0.25);
+            padding: 8px 16px; border-radius: var(--radius-sm); margin: 4px;
+        }
+        .award-badge .ab-icon { font-size: 1.2rem; }
+        .award-badge .ab-text { font-size: 0.82rem; color: var(--amber); font-weight: 500; }
+
+        /* ═══════════════════════════════════════════════════════
+           ERROR / DISCLAIMER
+           ═══════════════════════════════════════════════════════ */
+        .error-bar {
+            display:none; background: var(--red-dim); border: 1px solid rgba(248,113,113,0.3);
+            border-radius: var(--radius-xs); padding: 10px 16px; margin-bottom: 14px;
+            font-size: 0.85rem; color: var(--red);
+        }
+        .error-bar.active { display:block; }
+
+        .disclaimer-bar {
+            text-align: center; padding: 16px; font-size: 0.72rem; color: var(--text-3);
+            border-top: 1px solid var(--border-subtle); margin-top: 28px;
+        }
+
+        /* ═══════════════════════════════════════════════════════
+           RESPONSIVE
+           ═══════════════════════════════════════════════════════ */
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .main { margin-left: 0; }
+            .upload-grid { grid-template-columns: 1fr; }
+            .form-row { grid-template-columns: 1fr; }
+            .severity-widget { flex-direction: column; }
+            .meta-grid { grid-template-columns: 1fr 1fr; }
+            .about-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="shell">
+
+    <!-- ═══════════ SIDEBAR ═══════════ -->
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <h1><span class="icon">🫁</span> RadReport AI</h1>
+            <p>Chest X-ray Analysis Platform</p>
+        </div>
+
+        <nav class="sidebar-nav">
+            <button class="nav-item active" onclick="showPage('analyze')">
+                <span class="nav-icon">📋</span> Analyze X-ray
+            </button>
+            <button class="nav-item" onclick="showPage('history')">
+                <span class="nav-icon">📁</span> Report History
+                <span id="historyCount" style="margin-left:auto;background:var(--bg-4);padding:1px 8px;border-radius:10px;font-size:0.7rem;color:var(--text-3)">0</span>
+            </button>
+            <button class="nav-item" onclick="showPage('about')">
+                <span class="nav-icon">🔬</span> About & Research
+            </button>
+        </nav>
+
+        <div class="sidebar-status">
+            <span class="status-dot online"></span>
+            <span style="color:var(--green)">Model Active</span>
+            <div style="margin-top:6px;color:var(--text-3)">
+                DenseNet-121 + Attention<br>
+                TensorFlow/Keras 2.15
+            </div>
+        </div>
+    </aside>
+
+    <!-- ═══════════ MAIN ═══════════ -->
+    <div class="main">
+
+        <div class="topbar">
+            <span class="topbar-title" id="pageTitle">Analyze X-ray</span>
+            <div class="topbar-actions">
+                <select class="lang-select" id="langSelect">
+                    <option value="en">English</option>
+                    <option value="es">Español</option>
+                    <option value="fr">Français</option>
+                    <option value="de">Deutsch</option>
+                    <option value="zh-CN">中文</option>
+                    <option value="hi">हिन्दी</option>
+                    <option value="yo">Yorùbá</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="content">
+
+            <!-- ════════ ANALYZE PAGE ════════ -->
+            <div class="page active" id="page-analyze">
+
+                <!-- Patient Info -->
+                <div class="card">
+                    <div class="card-header"><h2>Patient Information</h2></div>
+                    <div class="card-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Full Name</label>
+                                <input type="text" id="patientName" placeholder="e.g. John Doe" />
+                            </div>
+                            <div class="form-group">
+                                <label>Age</label>
+                                <input type="text" id="patientAge" placeholder="e.g. 45" />
+                            </div>
+                            <div class="form-group">
+                                <label>Gender</label>
+                                <select id="patientGender">
+                                    <option value="">Select</option>
+                                    <option value="Male">Male</option>
+                                    <option value="Female">Female</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Upload -->
+                <div class="card">
+                    <div class="card-header"><h2>Upload Chest X-ray</h2></div>
+                    <div class="card-body">
+                        <div class="upload-grid">
+                            <div class="upload-zone" id="zone1" onclick="document.getElementById('file1').click()">
+                                <input type="file" id="file1" accept="image/png,image/jpeg,image/jpg,.dcm" />
+                                <div class="uz-icon">🩻</div>
+                                <div class="uz-label">Primary X-ray (Frontal View)</div>
+                                <div class="uz-hint">PNG, JPEG or DICOM — click or drag to upload</div>
+                            </div>
+                            <div class="upload-zone" id="zone2" onclick="document.getElementById('file2').click()">
+                                <input type="file" id="file2" accept="image/png,image/jpeg,image/jpg,.dcm" />
+                                <div class="uz-icon">🩻</div>
+                                <div class="uz-label">Secondary X-ray (Optional)</div>
+                                <div class="uz-hint">Lateral view for improved analysis</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="error-bar" id="errorBar"></div>
+
+                <button class="btn-analyze" id="analyzeBtn" disabled onclick="runAnalysis()">
+                    Analyze X-ray
+                </button>
+
+                <!-- Loading -->
+                <div class="loading-state" id="loadingState">
+                    <div class="spinner"></div>
+                    <div class="ls-text">Running inference with attention-based deep learning model</div>
+                    <div class="ls-timer" id="timer">0.0s</div>
+                    <div class="ls-steps">
+                        <div class="ls-step done" id="step1">✓ Image preprocessed (224×224 RGB)</div>
+                        <div class="ls-step active" id="step2">⟳ Encoding with DenseNet-121 (CheXNet)</div>
+                        <div class="ls-step" id="step3">○ Decoding with attention + GRU</div>
+                        <div class="ls-step" id="step4">○ Generating attention heatmap</div>
+                    </div>
+                </div>
+
+                <!-- Results -->
+                <div class="results" id="results">
+
+                    <div class="results-header">
+                        <h2>Analysis Results</h2>
+                        <div class="results-actions">
+                            <button class="btn-sm" onclick="translateReport()">🌐 Translate</button>
+                            <button class="btn-sm" onclick="downloadPDF()">📄 Export PDF</button>
+                            <button class="btn-sm" onclick="resetForm()">↻ New Analysis</button>
+                        </div>
+                    </div>
+
+                    <!-- Severity -->
+                    <div class="card">
+                        <div class="card-header"><h2>Severity Assessment</h2></div>
+                        <div class="card-body">
+                            <div class="severity-widget">
+                                <div class="sev-score-box">
+                                    <div class="sev-val" id="sevVal">—</div>
+                                    <div class="sev-max">/ 10</div>
+                                    <div class="sev-level" id="sevLevel">—</div>
+                                </div>
+                                <div class="sev-details">
+                                    <div class="sev-bar"><div class="sev-bar-fill" id="sevBar"></div></div>
+                                    <div class="sev-grid">
+                                        <div class="sev-item"><div class="sev-dt">Urgency</div><div class="sev-dd" id="sevUrgency">—</div></div>
+                                        <div class="sev-item"><div class="sev-dt">Follow-up</div><div class="sev-dd" id="sevFollowup">—</div></div>
+                                        <div class="sev-item"><div class="sev-dt">Patient</div><div class="sev-dd" id="sevPatient">—</div></div>
+                                        <div class="sev-item"><div class="sev-dt">Timestamp</div><div class="sev-dd" id="sevTime">—</div></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Report -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>Generated Impression</h2>
+                            <span style="font-size:0.72rem;color:var(--text-3)">Hover terms for definitions</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="report-text" id="reportText"></div>
+                        </div>
+                    </div>
+
+                    <!-- Plain English -->
+                    <div class="card" id="plainEnglishCard" style="display:none">
+                        <div class="card-header">
+                            <h2>Plain English Summary</h2>
+                            <span style="font-size:0.72rem;color:var(--text-3)">What this means in simple terms</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="plain-english-box" id="plainEnglishText"></div>
+                        </div>
+                    </div>
+
+                    <!-- Findings -->
+                    <div class="card" id="findingsCard" style="display:none">
+                        <div class="card-header"><h2>Key Findings</h2></div>
+                        <div class="card-body"><div class="findings-tags" id="findingsTags"></div></div>
+                    </div>
+
+                    <!-- Attention -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>Attention Visualization</h2>
+                            <span style="font-size:0.72rem;color:var(--text-3)">Brighter = stronger model focus</span>
+                        </div>
+                        <div class="card-body">
+                            <img id="attImg" class="att-img" alt="Attention heatmap" />
+                        </div>
+                    </div>
+
+                    <!-- Metadata -->
+                    <div class="card">
+                        <div class="card-header"><h2>Inference Details</h2></div>
+                        <div class="card-body">
+                            <div class="meta-grid">
+                                <div class="meta-cell"><div class="mc-label">Inference Time</div><div class="mc-val" id="mTime">—</div></div>
+                                <div class="meta-cell"><div class="mc-label">Tokens Generated</div><div class="mc-val" id="mTokens">—</div></div>
+                                <div class="meta-cell"><div class="mc-label">Model</div><div class="mc-val" id="mModel">—</div></div>
+                                <div class="meta-cell"><div class="mc-label">Report ID</div><div class="mc-val" id="mId">—</div></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="disclaimer-bar">
+                        This is an AI-generated report for research and educational purposes only.<br>
+                        Not intended for clinical diagnosis. Always consult qualified healthcare professionals.
+                    </div>
+                </div>
+            </div>
+
+            <!-- ════════ HISTORY PAGE ════════ -->
+            <div class="page" id="page-history">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+                    <h2 style="font-size:1rem;font-weight:600">Report History</h2>
+                    <button class="btn-sm" onclick="clearHistory()">🗑 Clear All</button>
+                </div>
+                <div id="historyList">
+                    <div class="history-empty">
+                        <div class="he-icon">📁</div>
+                        <div>No reports yet. Analyze an X-ray to see results here.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ════════ ABOUT PAGE ════════ -->
+            <div class="page" id="page-about">
+                <div class="about-hero">
+                    <h2>Deep Learning for Medical Report Generation</h2>
+                    <p>From Award-Winning Research to Production — Automated chest X-ray analysis using attention-based deep learning for resource-constrained healthcare environments.</p>
+                </div>
+
+                <div class="about-grid" style="margin-bottom:20px">
+                    <div class="card">
+                        <div class="card-header"><h2>Architecture</h2></div>
+                        <div class="card-body">
+                            <div class="about-stat"><div class="as-val">DenseNet-121</div><div class="as-label">Image Encoder (CheXNet Pre-trained)</div></div>
+                            <div style="padding:0 16px">
+                                <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-subtle)">
+                                    <span style="color:var(--text-2);font-size:0.82rem">Attention</span>
+                                    <span style="font-size:0.82rem">Bahdanau (Additive) Global</span>
+                                </div>
+                                <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-subtle)">
+                                    <span style="color:var(--text-2);font-size:0.82rem">Decoder</span>
+                                    <span style="font-size:0.82rem">GRU + Greedy Search</span>
+                                </div>
+                                <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-subtle)">
+                                    <span style="color:var(--text-2);font-size:0.82rem">Embedding</span>
+                                    <span style="font-size:0.82rem">300-dim (GloVe)</span>
+                                </div>
+                                <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-subtle)">
+                                    <span style="color:var(--text-2);font-size:0.82rem">Framework</span>
+                                    <span style="font-size:0.82rem">TensorFlow / Keras 2.15</span>
+                                </div>
+                                <div style="display:flex;justify-content:space-between;padding:8px 0">
+                                    <span style="color:var(--text-2);font-size:0.82rem">Input</span>
+                                    <span style="font-size:0.82rem">224×224 RGB</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header"><h2>Performance</h2></div>
+                        <div class="card-body">
+                            <div class="about-grid" style="gap:0">
+                                <div class="about-stat"><div class="as-val">0.482</div><div class="as-label">BLEU-4 Score</div></div>
+                                <div class="about-stat"><div class="as-val">0.718</div><div class="as-label">ROUGE-L Score</div></div>
+                                <div class="about-stat"><div class="as-val">&lt;60s</div><div class="as-label">Inference Time</div></div>
+                                <div class="about-stat"><div class="as-val">~7.4K</div><div class="as-label">Training Images</div></div>
+                            </div>
+                            <div style="text-align:center;padding:12px;font-size:0.75rem;color:var(--text-3)">
+                                81% normal cases in training data (class imbalance challenge)
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header"><h2>Publications & Awards</h2></div>
+                    <div class="card-body">
+                        <div style="margin-bottom:16px">
+                            <div class="award-badge"><span class="ab-icon">🏆</span><span class="ab-text">Best Presenter Award — NexSymp 2025, Malaysia</span></div>
+                        </div>
+                        <div class="pub-item">
+                            <div class="pub-title">Journal of Informatics and Web Engineering (JIWE)</div>
+                            <div class="pub-detail">Vol 5, No 1 — February 2026</div>
+                        </div>
+                        <div class="pub-item">
+                            <div class="pub-title">Q1 Springer Publication</div>
+                            <div class="pub-detail">Referenced citation</div>
+                        </div>
+                        <div class="pub-item">
+                            <div class="pub-title">Scienmag Science Magazine</div>
+                            <div class="pub-detail">Featured article</div>
+                        </div>
+                        <div class="pub-item">
+                            <div class="pub-title">Builders Foundry London</div>
+                            <div class="pub-detail">Invited speaker — April 2026</div>
+                        </div>
+                        <div class="pub-item">
+                            <div class="pub-title">DevBcn Barcelona</div>
+                            <div class="pub-detail">Technical talk — June 2026</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header"><h2>About the Author</h2></div>
+                    <div class="card-body" style="text-align:center;padding:28px">
+                        <div style="font-size:1.1rem;font-weight:700">David Agbolade</div>
+                        <div style="color:var(--text-2);font-size:0.85rem;margin-top:4px">Senior Data Scientist — UK Government (Ofsted)</div>
+                        <div style="margin-top:12px">
+                            <a href="https://github.com/dagbolade" target="_blank" style="color:var(--accent);text-decoration:none;font-size:0.85rem">GitHub ↗</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════
+const API = window.location.origin;
+let file1 = null, file2 = null;
+let timerInterval = null;
+let reportHistory = [];
+let lastReport = null;
+
+const TERMS = {
+    "cardiopulmonary":"Relating to the heart and lungs","pneumothorax":"Collapsed lung",
+    "effusion":"Fluid accumulation","consolidation":"Lung tissue filled with liquid",
+    "atelectasis":"Collapsed or closed air sacs","cardiomegaly":"Enlarged heart",
+    "opacity":"Area of increased density on X-ray","edema":"Swelling caused by excess fluid",
+    "emphysema":"Lung condition causing shortness of breath","nodule":"Small round growth or lump",
+    "tuberculosis":"Infectious disease primarily affecting lungs","pleural":"Relating to the membrane covering lungs",
+    "infiltrate":"Substance abnormally accumulating in tissue","pulmonary":"Relating to the lungs",
+    "vascular":"Relating to blood vessels","mediastinal":"Area between the lungs",
+    "hilar":"Where vessels and airways enter lungs","pneumonia":"Infection inflaming air sacs",
+    "fibrosis":"Thickening and scarring of tissue","calcification":"Calcium in soft tissue",
+    "granuloma":"Small area of inflammation","bilateral":"Affecting both sides",
+    "interstitial":"Tissue around air sacs","disease":"A disorder of structure or function",
+    "abnormality":"Something not typical","abnormalities":"Things not typical",
+    "chronic":"Long-lasting or recurrent","acute":"Sudden onset or short duration",
+    "stable":"Not changing or worsening","emphysematous":"Relating to emphysema",
+    "thoracic":"Relating to the chest","radiographic":"Relating to X-ray imaging",
+    "cardiopulmonary":"Relating to heart and lungs","bronchial":"Relating to airways in lungs",
+};
+
+// ═══════════════════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════════════════
+function showPage(name) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById('page-' + name).classList.add('active');
+    event.currentTarget.classList.add('active');
+    const titles = { analyze: 'Analyze X-ray', history: 'Report History', about: 'About & Research' };
+    document.getElementById('pageTitle').textContent = titles[name] || '';
+}
+
+// ═══════════════════════════════════════════════════════════
+// FILE HANDLING
+// ═══════════════════════════════════════════════════════════
+function setupZone(zoneId, inputId, num) {
+    const zone = document.getElementById(zoneId);
+    const input = document.getElementById(inputId);
+
+    input.addEventListener('change', e => { if (e.target.files[0]) setFile(zone, e.target.files[0], num); });
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('dragover'); if (e.dataTransfer.files[0]) setFile(zone, e.dataTransfer.files[0], num); });
+}
+
+function setFile(zone, f, num) {
+    if (num === 1) file1 = f; else file2 = f;
+    const reader = new FileReader();
+    reader.onload = e => {
+        zone.classList.add('has-image');
+        zone.innerHTML = `
+            <button class="remove-btn" onclick="event.stopPropagation();removeFile(${num})">✕</button>
+            <img src="${e.target.result}" class="preview" alt="Preview" />
+            <div class="fname">${f.name}</div>
+        `;
+    };
+    reader.readAsDataURL(f);
+    updateBtn();
+}
+
+function removeFile(num) {
+    if (num === 1) { file1 = null; resetZone('zone1', 'file1', 'Primary X-ray (Frontal View)', 'PNG, JPEG or DICOM — click or drag to upload'); }
+    else { file2 = null; resetZone('zone2', 'file2', 'Secondary X-ray (Optional)', 'Lateral view for improved analysis'); }
+    updateBtn();
+}
+
+function resetZone(zoneId, inputId, label, hint) {
+    const zone = document.getElementById(zoneId);
+    zone.classList.remove('has-image');
+    zone.innerHTML = `
+        <input type="file" id="${inputId}" accept="image/png,image/jpeg,image/jpg,.dcm" />
+        <div class="uz-icon">🩻</div>
+        <div class="uz-label">${label}</div>
+        <div class="uz-hint">${hint}</div>
+    `;
+    setupZone(zoneId, inputId, zoneId === 'zone1' ? 1 : 2);
+}
+
+function updateBtn() { document.getElementById('analyzeBtn').disabled = !file1; }
+
+// ═══════════════════════════════════════════════════════════
+// ANALYSIS
+// ═══════════════════════════════════════════════════════════
+async function runAnalysis() {
+    const btn = document.getElementById('analyzeBtn');
+    const loading = document.getElementById('loadingState');
+    const results = document.getElementById('results');
+    const error = document.getElementById('errorBar');
+
+    btn.disabled = true;
+    error.classList.remove('active');
+    results.classList.remove('active');
+    loading.classList.add('active');
+
+    // Animate steps
+    resetSteps();
+    let elapsed = 0;
+    const timerEl = document.getElementById('timer');
+    timerInterval = setInterval(() => {
+        elapsed += 0.1;
+        timerEl.textContent = elapsed.toFixed(1) + 's';
+        if (elapsed > 0.3) stepDone(1), stepActive(2);
+        if (elapsed > 1.5) stepDone(2), stepActive(3);
+        if (elapsed > 2.5) stepDone(3), stepActive(4);
+    }, 100);
+
+    try {
+        const fd = new FormData();
+        fd.append('image1', file1);
+        if (file2) fd.append('image2', file2);
+        fd.append('patient_name', document.getElementById('patientName').value);
+        fd.append('patient_age', document.getElementById('patientAge').value);
+        fd.append('patient_gender', document.getElementById('patientGender').value);
+
+        const res = await fetch(API + '/api/analyze', { method: 'POST', body: fd });
+        if (!res.ok) { const d = await res.json().catch(()=>({})); throw new Error(d.detail || 'Server error ' + res.status); }
+        const data = await res.json();
+        lastReport = data;
+        displayResults(data);
+        addToHistory(data);
+
+    } catch (err) {
+        error.textContent = err.message;
+        error.classList.add('active');
+    } finally {
+        clearInterval(timerInterval);
+        loading.classList.remove('active');
+        btn.disabled = false;
+    }
+}
+
+function resetSteps() {
+    for (let i = 1; i <= 4; i++) {
+        const s = document.getElementById('step' + i);
+        s.className = 'ls-step';
+        s.textContent = ['○ Image preprocessing (224×224 RGB)', '○ Encoding with DenseNet-121 (CheXNet)', '○ Decoding with attention + GRU', '○ Generating attention heatmap'][i-1];
+    }
+    stepDone(1);
+}
+
+function stepDone(n) { const s = document.getElementById('step' + n); s.className = 'ls-step done'; s.textContent = '✓' + s.textContent.slice(1); }
+function stepActive(n) { const s = document.getElementById('step' + n); s.className = 'ls-step active'; s.textContent = '⟳' + s.textContent.slice(1); }
+
+// ═══════════════════════════════════════════════════════════
+// DISPLAY RESULTS
+// ═══════════════════════════════════════════════════════════
+function displayResults(d) {
+    const results = document.getElementById('results');
+    const score = d.severity.score;
+
+    // Severity color
+    let col, level, levelBg;
+    if (score >= 7) { col = 'var(--red)'; level = 'Critical'; levelBg = 'var(--red-dim)'; }
+    else if (score >= 5) { col = 'var(--amber)'; level = 'Urgent'; levelBg = 'var(--amber-dim)'; }
+    else if (score >= 3) { col = '#ca8a04'; level = 'Moderate'; levelBg = 'rgba(202,138,4,0.12)'; }
+    else { col = 'var(--green)'; level = 'Routine'; levelBg = 'var(--green-dim)'; }
+
+    document.getElementById('sevVal').textContent = score.toFixed(1);
+    document.getElementById('sevVal').style.color = col;
+
+    const sevLevel = document.getElementById('sevLevel');
+    sevLevel.textContent = level;
+    sevLevel.style.color = col;
+    sevLevel.style.background = levelBg;
+
+    document.getElementById('sevBar').style.width = (score / 10 * 100) + '%';
+    document.getElementById('sevBar').style.background = col;
+
+    document.getElementById('sevUrgency').textContent = d.severity.urgency;
+    document.getElementById('sevFollowup').textContent = d.severity.followup;
+    document.getElementById('sevPatient').textContent = d.patient?.name || 'Anonymous';
+    document.getElementById('sevTime').textContent = new Date(d.timestamp).toLocaleString();
+
+    // Report text — clean up spacing before punctuation, then annotate medical terms
+    let reportStr = d.generated_report.replace(/\s+([.,;:!?])/g, '$1');
+    const words = reportStr.split(' ').filter(w => w.length > 0);
+    const html = words.map(w => {
+        const clean = w.toLowerCase().replace(/[.,;:!?]/g, '');
+        if (!clean) return w; // pure punctuation
+        return TERMS[clean] ? `<span class="med-term" data-def="${TERMS[clean]}">${w}</span>` : w;
+    }).join(' ');
+    document.getElementById('reportText').innerHTML = html;
+
+    // Plain English
+    const peCard = document.getElementById('plainEnglishCard');
+    const peText = document.getElementById('plainEnglishText');
+    if (d.plain_english) {
+        peCard.style.display = '';
+        peText.textContent = d.plain_english;
+    } else { peCard.style.display = 'none'; }
+
+    // Findings
+    const findings = d.severity.key_findings || [];
+    const fc = document.getElementById('findingsCard');
+    const ft = document.getElementById('findingsTags');
+    if (findings.length) {
+        fc.style.display = '';
+        ft.innerHTML = findings.map(f => `<span class="ftag" title="${d.severity.findings_explained?.[f] || ''}">${f}</span>`).join('');
+    } else { fc.style.display = 'none'; }
+
+    // Attention
+    document.getElementById('attImg').src = 'data:image/png;base64,' + d.attention_visualization;
+
+    // Metadata
+    document.getElementById('mTime').textContent = d.inference_time_seconds + 's';
+    document.getElementById('mTokens').textContent = d.num_tokens_generated;
+    document.getElementById('mModel').textContent = d.model_info?.name || 'Attention-CheXNet';
+    document.getElementById('mId').textContent = d.report_id.substring(0, 8);
+
+    results.classList.add('active');
+    results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ═══════════════════════════════════════════════════════════
+// TRANSLATE
+// ═══════════════════════════════════════════════════════════
+async function translateReport() {
+    if (!lastReport) return;
+    const lang = document.getElementById('langSelect').value;
+    if (lang === 'en') return;
+
+    try {
+        // Translate impression
+        const fd1 = new FormData();
+        fd1.append('text', lastReport.generated_report);
+        fd1.append('target_language', lang);
+        const res1 = await fetch(API + '/api/translate', { method: 'POST', body: fd1 });
+        if (!res1.ok) throw new Error('Translation failed');
+        const data1 = await res1.json();
+        document.getElementById('reportText').innerHTML =
+            `<div style="margin-bottom:10px;font-size:0.72rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.05em">Translated (${lang})</div>` +
+            data1.translated_text +
+            `<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border-subtle);font-size:0.72rem;color:var(--text-3)">Original: ${lastReport.generated_report}</div>`;
+
+        // Translate plain English summary
+        if (lastReport.plain_english) {
+            const fd2 = new FormData();
+            fd2.append('text', lastReport.plain_english);
+            fd2.append('target_language', lang);
+            const res2 = await fetch(API + '/api/translate', { method: 'POST', body: fd2 });
+            if (res2.ok) {
+                const data2 = await res2.json();
+                document.getElementById('plainEnglishText').innerHTML =
+                    `<div style="margin-bottom:10px;font-size:0.72rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.05em">Translated (${lang})</div>` +
+                    data2.translated_text +
+                    `<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border-subtle);font-size:0.72rem;color:var(--text-3)">Original: ${lastReport.plain_english}</div>`;
+            }
+        }
+    } catch (e) {
+        alert('Translation failed: ' + e.message);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+// PDF EXPORT (client-side)
+// ═══════════════════════════════════════════════════════════
+function downloadPDF() {
+    if (!lastReport) return;
+    // Build a printable HTML and trigger print dialog
+    const d = lastReport;
+    const w = window.open('', '_blank');
+    w.document.write(`<!DOCTYPE html><html><head><title>Radiology Report — ${d.patient?.name || 'Patient'}</title>
+    <style>body{font-family:Arial,sans-serif;padding:40px;max-width:800px;margin:0 auto;color:#1a1a1a}
+    h1{font-size:20px;border-bottom:2px solid #333;padding-bottom:8px}
+    h2{font-size:14px;color:#555;margin-top:24px;text-transform:uppercase;letter-spacing:1px}
+    .meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0;font-size:13px}
+    .meta dt{color:#666} .meta dd{font-weight:600;margin:0}
+    .report{background:#f5f5f5;padding:16px;border-left:3px solid #2563eb;margin:16px 0;font-size:15px;line-height:1.7}
+    .disclaimer{font-size:11px;color:#999;margin-top:32px;border-top:1px solid #ddd;padding-top:12px}
+    img{max-width:100%;margin:12px 0}
+    @media print{body{padding:20px}}</style></head><body>
+    <h1>Radiology Report</h1>
+    <div class="meta">
+        <div><dt>Patient</dt><dd>${d.patient?.name || 'Anonymous'}</dd></div>
+        <div><dt>Age / Gender</dt><dd>${d.patient?.age || '—'} / ${d.patient?.gender || '—'}</dd></div>
+        <div><dt>Date</dt><dd>${new Date(d.timestamp).toLocaleString()}</dd></div>
+        <div><dt>Report ID</dt><dd>${d.report_id}</dd></div>
+    </div>
+    <h2>Severity Assessment</h2>
+    <p><strong>${d.severity.score}/10</strong> — ${d.severity.urgency}</p>
+    <p>Follow-up: ${d.severity.followup}</p>
+    <h2>Generated Impression</h2>
+    <div class="report">${d.generated_report.replace(/\s+([.,;:!?])/g, '$1')}</div>
+    ${d.plain_english ? `<h2>Plain English Summary</h2>
+    <div class="report" style="border-left-color:#34d399">${d.plain_english}</div>` : ''}
+    <h2>Key Findings</h2>
+    <p>${(d.severity.key_findings || []).join(', ') || 'None identified'}</p>
+    <h2>Attention Visualization</h2>
+    <img src="data:image/png;base64,${d.attention_visualization}" alt="Attention map" />
+    <h2>Inference Details</h2>
+    <div class="meta">
+        <div><dt>Inference Time</dt><dd>${d.inference_time_seconds}s</dd></div>
+        <div><dt>Tokens Generated</dt><dd>${d.num_tokens_generated}</dd></div>
+        <div><dt>Model</dt><dd>Attention-CheXNet (DenseNet-121 + GRU)</dd></div>
+    </div>
+    <div class="disclaimer">
+        This is an AI-generated report for research and educational purposes only.
+        Not intended for clinical diagnosis. Always consult qualified healthcare professionals.<br><br>
+        Generated by RadReport AI — David Agbolade — DevBcn Barcelona 2026
+    </div></body></html>`);
+    w.document.close();
+    setTimeout(() => w.print(), 500);
+}
+
+// ═══════════════════════════════════════════════════════════
+// HISTORY
+// ═══════════════════════════════════════════════════════════
+function addToHistory(d) {
+    reportHistory.unshift(d);
+    document.getElementById('historyCount').textContent = reportHistory.length;
+    renderHistory();
+}
+
+function renderHistory() {
+    const el = document.getElementById('historyList');
+    if (!reportHistory.length) {
+        el.innerHTML = '<div class="history-empty"><div class="he-icon">📁</div><div>No reports yet.</div></div>';
+        return;
+    }
+    el.innerHTML = reportHistory.map((d, i) => {
+        const score = d.severity.score;
+        let col, level;
+        if (score >= 7) { col = 'var(--red)'; level = 'Critical'; }
+        else if (score >= 5) { col = 'var(--amber)'; level = 'Urgent'; }
+        else if (score >= 3) { col = '#ca8a04'; level = 'Moderate'; }
+        else { col = 'var(--green)'; level = 'Routine'; }
+
+        return `<div class="history-item" onclick="loadHistoryItem(${i})">
+            <div class="hi-top">
+                <span class="hi-patient">${d.patient?.name || 'Anonymous'}</span>
+                <span class="hi-time">${new Date(d.timestamp).toLocaleString()}</span>
+            </div>
+            <div class="hi-bottom">
+                <span class="hi-badge" style="color:${col};background:${col}22">${score}/10 ${level}</span>
+                <span>${d.generated_report.substring(0, 60)}${d.generated_report.length > 60 ? '...' : ''}</span>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function loadHistoryItem(i) {
+    lastReport = reportHistory[i];
+    showPage.call(document.querySelector('.nav-item'), 'analyze');
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.querySelector('.nav-item').classList.add('active');
+    document.getElementById('pageTitle').textContent = 'Analyze X-ray';
+    displayResults(reportHistory[i]);
+}
+
+function clearHistory() {
+    reportHistory = [];
+    document.getElementById('historyCount').textContent = '0';
+    renderHistory();
+}
+
+// ═══════════════════════════════════════════════════════════
+// RESET
+// ═══════════════════════════════════════════════════════════
+function resetForm() {
+    document.getElementById('results').classList.remove('active');
+    document.getElementById('errorBar').classList.remove('active');
+    removeFile(1);
+    removeFile(2);
+    document.getElementById('patientName').value = '';
+    document.getElementById('patientAge').value = '';
+    document.getElementById('patientGender').value = '';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ═══════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════
+setupZone('zone1', 'file1', 1);
+setupZone('zone2', 'file2', 2);
+</script>
+
+</body>
+</html>
