@@ -23,7 +23,7 @@ COPY demo/frontend/ /app/frontend/
 
 # Copy model weights and tokenizer
 COPY Radiography/Attention_with_cheXNet_full_model1.h5 /app/Radiography/
-COPY Radiography/Copy\ of\ Copy\ of\ brucechou1983_CheXNet_Keras_0.3.0_weights.h5 /app/Radiography/
+COPY ["Radiography/Copy of Copy of brucechou1983_CheXNet_Keras_0.3.0_weights.h5", "/app/Radiography/"]
 COPY Radiography/tokenizer/ /app/Radiography/tokenizer/
 
 # Environment
